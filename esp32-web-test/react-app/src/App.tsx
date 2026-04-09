@@ -9,9 +9,7 @@ import {
   Printer, 
   QrCode, 
   Star, 
-  Package, 
   ArrowLeft, 
-  Menu, 
   CheckCircle2,
   Trash2,
   Layers,
@@ -22,7 +20,6 @@ import {
   MapPin,
   Send,
   Share2,
-  Info
 } from 'lucide-react';
 
 // --- Components ---
@@ -37,22 +34,176 @@ const GlossyButton = ({
   children, 
   onClick, 
   variant = 'blue',
-  className = "" 
+  className = "",
+  disabled = false,
 }: { 
   children: React.ReactNode, 
   onClick?: () => void, 
   variant?: 'blue' | 'green' | 'glass' | 'red',
-  className?: string 
+  className?: string,
+  disabled?: boolean,
 }) => {
   const baseClass = variant === 'blue' ? 'glossy-button-blue' : 
                     variant === 'green' ? 'glossy-button-green' : 
                     variant === 'red' ? 'bg-gradient-to-b from-red-400 to-red-600 border border-red-300/50 rounded-full px-12 py-4 font-bold text-xl text-white shadow-[0_0_20px_rgba(239,68,68,0.5)] transition-all active:scale-95 hover:brightness-110' :
                     'glass-button';
   return (
-    <button onClick={onClick} className={`${baseClass} ${className}`}>
+    <button onClick={onClick} disabled={disabled} className={`${baseClass} disabled:pointer-events-none disabled:opacity-50 ${className}`}>
       {children}
     </button>
   );
+};
+
+const PackageSolidIcon = ({ size = 24, className = "" }: { size?: number; className?: string }) => (
+  <svg
+    viewBox="216.5 331.7 162.9 177.6"
+    width={size}
+    height={size}
+    aria-hidden="true"
+    className={className}
+    preserveAspectRatio="xMidYMid meet"
+  >
+    <path
+      fill="currentColor"
+      fillOpacity={0.9}
+      d="M227.8,471.4l63.5,36c4.5,2.6,8.8,2.6,13.4,0l63.4-36c7.4-4.2,11.3-8.5,11.3-20v-63.9c0-8.4-3.1-13.6-9.8-17.5l-57.1-32.4c-9.8-5.6-19.2-5.6-29,0l-57,32.4c-6.9,3.9-9.9,9.1-9.9,17.5v63.9c0,11.5,4,15.8,11.3,20ZM235.1,460.7c-4.7-2.6-6.3-5.3-6.3-9.8v-60.9l62.9,35.9v67l-56.6-32.2ZM360.9,460.7l-56.6,32.2v-67l62.9-35.9v60.9c0,4.4-1.6,7.2-6.2,9.8ZM298,414.7l-62.3-35.3,24.9-14.3,62.3,35.4-24.9,14.1ZM335.9,393.2l-62.5-35.3,15.5-8.8c6.2-3.6,11.9-3.6,18.2,0l53.2,30.3-24.4,13.8Z"
+    />
+  </svg>
+);
+
+type SensorState = {
+  device?: string;
+  wifi_mode?: string;
+  ssid?: string;
+  ip?: string;
+  ready?: boolean;
+  has_sample?: boolean;
+  calibrated?: boolean;
+  tare_applied?: boolean;
+  calibration_factor?: number;
+  raw?: number | null;
+  grams?: number | null;
+  uptime_ms?: number;
+  heap_free?: number;
+  wifi_clients?: number;
+};
+
+const SensorDebugScreen = ({ onClose }: { onClose: () => void }) => {
+  const [knownGrams, setKnownGrams] = useState(100);
+  const [lastAction, setLastAction] = useState('Waiting for sensor data...');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  const applyPayload = async (path: string, actionName: string) => {
+    try {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setConnectionError(null);
+      setLastAction(actionName);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed';
+      setConnectionError(message);
+    }
+  };
+
+  const tare = () => void applyPayload('/api/loadcell/tare', 'Tare requested');
+  const calibrateWithKnownWeight = () =>
+    void applyPayload(`/api/loadcell/calibrate?known_grams=${encodeURIComponent(String(knownGrams))}`, 'Calibrated with known weight');
+
+  return (
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/90 text-white backdrop-blur-md">
+      <div className="min-h-full px-4 py-[calc(env(safe-area-inset-top)+0.75rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-6">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 sm:gap-6">
+          <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+            <div className="space-y-2">
+              <p className="text-xs uppercase tracking-[0.3em] text-white/50 sm:text-sm">Sensor Debug</p>
+              <h2 className="text-3xl font-black leading-tight sm:text-4xl">Weight Integration</h2>
+            </div>
+            <GlossyButton variant="glass" onClick={onClose} className="w-full sm:w-auto">
+              Close
+            </GlossyButton>
+          </div>
+
+          <GlassCard className="space-y-4 !p-4 sm:space-y-5 sm:!p-8">
+            <p className="text-sm leading-relaxed text-white/70 sm:text-base">
+              Use tare first on an empty scale, then place a known weight and calibrate.
+            </p>
+
+            <div className="space-y-3">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/50 sm:text-sm">Known weight for calibration</p>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <input
+                  type="number"
+                  value={knownGrams}
+                  onChange={(e) => setKnownGrams(Number(e.target.value) || 0)}
+                  className="w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-xl font-black outline-none sm:text-2xl"
+                />
+                <GlossyButton variant="green" onClick={calibrateWithKnownWeight} className="w-full sm:w-auto">
+                  Calibrate
+                </GlossyButton>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <GlossyButton variant="blue" onClick={tare} className="w-full sm:w-auto">
+                Tare Now
+              </GlossyButton>
+            </div>
+
+            <p className="min-h-[1.5rem] text-sm text-white/70 sm:text-base">
+              {connectionError ? connectionError : lastAction}
+            </p>
+          </GlassCard>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const getLiveSensorApiBase = () =>
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://192.168.4.1'
+    : window.location.origin;
+
+const useLiveSensorState = () => {
+  const [sensorState, setSensorState] = useState<SensorState | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [apiBase] = useState(getLiveSensorApiBase);
+  const normalizedApiBase = apiBase.replace(/\/$/, '');
+
+  useEffect(() => {
+    let alive = true;
+
+    const syncState = async () => {
+      try {
+        const response = await fetch(`${normalizedApiBase}/api/loadcell/state`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = (await response.json()) as SensorState;
+        if (!alive) return;
+        setSensorState(data);
+        setConnectionError(null);
+      } catch (error) {
+        if (!alive) return;
+        const message = error instanceof Error ? error.message : 'Failed to reach ESP32';
+        setConnectionError(message);
+      }
+    };
+
+    void syncState();
+    const timer = window.setInterval(syncState, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [normalizedApiBase]);
+
+  return { sensorState, connectionError };
 };
 
 const Background = () => (
@@ -89,7 +240,7 @@ const Background = () => (
 
 // 0. START SCREEN
 const WelcomeScreen = ({ onStart }: { onStart: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full text-center space-y-12">
+  <div className="flex flex-col items-center justify-center min-h-full text-center space-y-12">
     <motion.div
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
@@ -105,12 +256,27 @@ const WelcomeScreen = ({ onStart }: { onStart: () => void }) => (
 );
 
 // 1. STEP 1 — MEASURE TOTAL WEIGHT
-const WeighStep1Screen = ({ onConfirm }: { onConfirm: (w: number) => void }) => {
-  const [weight, setWeight] = useState(850);
+const WeighStep1Screen = ({
+  liveWeight,
+  calibrated,
+  onConfirm,
+}: {
+  liveWeight: number | null;
+  calibrated: boolean;
+  onConfirm: (w: number) => void;
+}) => {
+  const displayWeight = calibrated && liveWeight !== null ? Math.round(liveWeight) : null;
   return (
-    <div className="flex flex-col items-center justify-center h-full space-y-10">
+    <div className="flex flex-col items-center justify-center min-h-full space-y-10">
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold drop-shadow-md">Step 1 — Measure total weight</h2>
+        {!calibrated ? (
+          <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>
+        ) : displayWeight === null ? (
+          <p className="text-lg font-medium text-white/70">Waiting for live sensor data...</p>
+        ) : (
+          <p className="text-lg font-medium text-white/70">Live reading from the ESP32</p>
+        )}
       </div>
       <GlassCard className="w-full max-w-md p-16 flex flex-col items-center relative overflow-hidden">
         <motion.div 
@@ -118,22 +284,34 @@ const WeighStep1Screen = ({ onConfirm }: { onConfirm: (w: number) => void }) => 
           transition={{ duration: 2, repeat: Infinity }}
           className="absolute inset-0 bg-blue-400/5 pointer-events-none"
         />
-        <motion.div 
-          animate={{ scale: [1, 1.02, 1] }}
-          transition={{ duration: 0.1, repeat: Infinity, repeatType: "reverse" }}
-          className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap"
-        >
-          {weight} <span className="text-4xl font-normal opacity-70 ml-2">g</span>
-        </motion.div>
+        {displayWeight !== null ? (
+          <motion.div 
+            animate={{ scale: [1, 1.02, 1] }}
+            transition={{ duration: 0.1, repeat: Infinity, repeatType: "reverse" }}
+            className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap"
+          >
+            {displayWeight} <span className="text-4xl font-normal opacity-70 ml-2">g</span>
+          </motion.div>
+        ) : (
+          <div className="text-7xl font-black text-white/40 whitespace-nowrap">— g</div>
+        )}
       </GlassCard>
-      <GlossyButton variant="green" onClick={() => onConfirm(weight)}>Confirm Weight</GlossyButton>
+      <GlossyButton
+        variant="green"
+        onClick={() => {
+          if (displayWeight !== null) onConfirm(displayWeight);
+        }}
+        disabled={displayWeight === null}
+      >
+        Confirm Weight
+      </GlossyButton>
     </div>
   );
 };
 
 // 2. STEP 2 — UNPACK GUIDE
 const UnpackScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full text-center space-y-16">
+  <div className="flex flex-col items-center justify-center min-h-full text-center space-y-16">
     <h2 className="text-5xl font-bold drop-shadow-lg">Unpack your package</h2>
     <motion.div 
       initial={{ scale: 0.8, opacity: 0 }}
@@ -148,7 +326,7 @@ const UnpackScreen = ({ onNext }: { onNext: () => void }) => (
           }}
           transition={{ duration: 4, repeat: Infinity }}
         >
-          <Package size={160} className="text-amber-200/80" />
+          <PackageSolidIcon size={160} className="text-amber-200/80" />
         </motion.div>
         {/* Floating items animation */}
         <AnimatePresence>
@@ -179,7 +357,7 @@ const SortMaterialsScreen = ({ onNext }: { onNext: (data: any) => void }) => {
     { id: 'recyclable', label: 'Recyclable', icon: <Recycle />, color: 'emerald', glow: 'shadow-[0_0_20px_#10b981]' },
     { id: 'nonRecyclable', label: 'Non-Recyclable', icon: <XCircle />, color: 'red', glow: 'shadow-[0_0_20px_#ef4444]' },
     { id: 'reusable', label: 'Reusable', icon: <RefreshCw />, color: 'cyan', glow: 'shadow-[0_0_20px_#06b6d4]' },
-    { id: 'others', label: 'Others', icon: <Package />, color: 'slate', glow: 'shadow-[0_0_20px_#64748b]' },
+    { id: 'others', label: 'Others', icon: <PackageSolidIcon />, color: 'slate', glow: 'shadow-[0_0_20px_#64748b]' },
   ];
 
   const handleSort = (id: string) => {
@@ -187,7 +365,7 @@ const SortMaterialsScreen = ({ onNext }: { onNext: (data: any) => void }) => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full space-y-10 px-6">
+    <div className="flex flex-col items-center justify-center min-h-full space-y-10 px-6">
       <div className="text-center space-y-2">
         <h2 className="text-4xl font-bold">Sort removed materials</h2>
         <p className="text-xl opacity-80">Classify based on how they can be handled</p>
@@ -214,23 +392,50 @@ const SortMaterialsScreen = ({ onNext }: { onNext: (data: any) => void }) => {
 };
 
 // 4. STEP 4 — MEASURE AGAIN
-const WeighStep2Screen = ({ onConfirm }: { onConfirm: (w: number) => void }) => {
-  const [weight, setWeight] = useState(520);
+const WeighStep2Screen = ({
+  liveWeight,
+  calibrated,
+  onConfirm,
+}: {
+  liveWeight: number | null;
+  calibrated: boolean;
+  onConfirm: (w: number) => void;
+}) => {
+  const displayWeight = calibrated && liveWeight !== null ? Math.round(liveWeight) : null;
   return (
-    <div className="flex flex-col items-center justify-center h-full space-y-10">
+    <div className="flex flex-col items-center justify-center min-h-full space-y-10">
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold drop-shadow-md">Step 2 — Weigh again</h2>
+        {!calibrated ? (
+          <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>
+        ) : displayWeight === null ? (
+          <p className="text-lg font-medium text-white/70">Waiting for live sensor data...</p>
+        ) : (
+          <p className="text-lg font-medium text-white/70">Live reading from the ESP32</p>
+        )}
       </div>
       <GlassCard className="w-full max-w-md p-16 flex flex-col items-center">
-        <motion.div 
-          initial={{ scale: 1.5, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap"
-        >
-          {weight} <span className="text-4xl font-normal opacity-70 ml-2">g</span>
-        </motion.div>
+        {displayWeight !== null ? (
+          <motion.div 
+            initial={{ scale: 1.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap"
+          >
+            {displayWeight} <span className="text-4xl font-normal opacity-70 ml-2">g</span>
+          </motion.div>
+        ) : (
+          <div className="text-7xl font-black text-white/40 whitespace-nowrap">— g</div>
+        )}
       </GlassCard>
-      <GlossyButton variant="blue" onClick={() => onConfirm(weight)}>Compare Result</GlossyButton>
+      <GlossyButton
+        variant="blue"
+        onClick={() => {
+          if (displayWeight !== null) onConfirm(displayWeight);
+        }}
+        disabled={displayWeight === null}
+      >
+        Compare Result
+      </GlossyButton>
     </div>
   );
 };
@@ -270,7 +475,7 @@ const AnalyzingScreen = ({ onComplete }: { onComplete: () => void }) => {
   }, [onComplete]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full space-y-12">
+    <div className="flex flex-col items-center justify-center min-h-full space-y-12">
       <h2 className="text-4xl font-bold text-center">Analyzing Packaging...</h2>
       
       <div className="relative">
@@ -286,7 +491,7 @@ const AnalyzingScreen = ({ onComplete }: { onComplete: () => void }) => {
             className="absolute inset-x-0 h-1 bg-white/40 blur-sm"
           />
           <div className="orb-glow" />
-          <Package size={80} className="text-white/60 relative z-10" />
+          <PackageSolidIcon size={80} className="text-white/60 relative z-10" />
         </div>
       </div>
 
@@ -315,29 +520,35 @@ const AnalyzingScreen = ({ onComplete }: { onComplete: () => void }) => {
 };
 
 // 6. RESULT — OVERPACKAGING DETECTED
-const ResultsScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full space-y-8 px-6">
+const ResultsScreen = ({ before, after, onNext }: { before: number | null; after: number | null; onNext: () => void }) => {
+  const removed = before !== null && after !== null ? Math.max(before - after, 0) : null;
+  const maxWeight = Math.max(before ?? 0, after ?? 0, 1);
+  const beforeHeight = before !== null ? `${Math.max(10, (before / maxWeight) * 100)}%` : '10%';
+  const afterHeight = after !== null ? `${Math.max(10, (after / maxWeight) * 100)}%` : '10%';
+
+  return (
+  <div className="flex flex-col items-center justify-center min-h-full space-y-8 px-6">
     <div className="text-center space-y-2">
       <h2 className="text-2xl font-medium opacity-80">Packaging Removed</h2>
-      <p className="text-6xl font-black">330 g</p>
+      <p className="text-6xl font-black">{removed === null ? '—' : `${removed} g`}</p>
     </div>
     
     <GlassCard className="w-full max-w-sm p-10 space-y-8">
       <div className="flex justify-around items-end h-64 pb-8 border-b border-white/10">
         <div className="flex flex-col items-center space-y-3">
-          <div className="text-xl font-bold">850 g</div>
+          <div className="text-xl font-bold">{before === null ? '—' : `${before} g`}</div>
           <motion.div 
             initial={{ height: 0 }}
-            animate={{ height: '100%' }}
+            animate={{ height: beforeHeight }}
             className="w-20 bg-gradient-to-t from-blue-600/60 to-blue-400/80 rounded-t-2xl border border-white/20"
           />
           <div className="text-lg opacity-70">Before</div>
         </div>
         <div className="flex flex-col items-center space-y-3">
-          <div className="text-xl font-bold">520 g</div>
+          <div className="text-xl font-bold">{after === null ? '—' : `${after} g`}</div>
           <motion.div 
             initial={{ height: 0 }}
-            animate={{ height: '61%' }}
+            animate={{ height: afterHeight }}
             className="w-20 bg-gradient-to-t from-emerald-600/60 to-emerald-400/80 rounded-t-2xl border border-white/20"
           />
           <div className="text-lg opacity-70">After</div>
@@ -356,11 +567,12 @@ const ResultsScreen = ({ onNext }: { onNext: () => void }) => (
 
     <GlossyButton variant="glass" onClick={onNext}>Continue</GlossyButton>
   </div>
-);
+  );
+};
 
 // 7. ENVIRONMENTAL IMPACT
 const ImpactScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full text-center space-y-16 px-6">
+  <div className="flex flex-col items-center justify-center min-h-full text-center space-y-16 px-6">
     <h2 className="text-3xl font-bold drop-shadow-md">This equals:</h2>
     
     <div className="flex items-center justify-center space-x-8">
@@ -389,7 +601,7 @@ const ImpactScreen = ({ onNext }: { onNext: () => void }) => (
         animate={{ scale: 1, rotate: 0 }}
         transition={{ delay: 1.5, type: "spring", bounce: 0.5 }}
       >
-        <Package size={200} className="text-amber-200 drop-shadow-[0_0_30px_rgba(251,191,36,0.4)]" />
+        <PackageSolidIcon size={200} className="text-amber-200 drop-shadow-[0_0_30px_rgba(251,191,36,0.4)]" />
       </motion.div>
     </div>
 
@@ -411,7 +623,7 @@ const JudgmentScreen = ({ onNext }: { onNext: () => void }) => {
   }, [onNext]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full bg-black/40 backdrop-blur-sm transition-all duration-1000">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-1000">
       <motion.h2 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -424,7 +636,7 @@ const JudgmentScreen = ({ onNext }: { onNext: () => void }) => {
 };
 
 // 9. FEEDBACK & RATING
-const RatingScreen = ({ onNext }: { onNext: () => void }) => {
+const RatingScreen = ({ onSend, onSkip }: { onSend: () => void; onSkip: () => void }) => {
   const [rating, setRating] = useState(0);
   const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
 
@@ -441,7 +653,7 @@ const RatingScreen = ({ onNext }: { onNext: () => void }) => {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center h-full space-y-10 px-6">
+    <div className="flex flex-col items-center justify-center min-h-full space-y-10 px-6">
       <GlassCard className="w-full max-w-md p-10 space-y-10 flex flex-col items-center">
         <div className="flex justify-center space-x-3">
           {[1, 2, 3, 4, 5].map(i => (
@@ -480,8 +692,8 @@ const RatingScreen = ({ onNext }: { onNext: () => void }) => {
         <div className="text-center space-y-6">
           <p className="text-3xl font-black">Send feedback to seller?</p>
           <div className="flex space-x-6">
-            <GlossyButton variant="green" onClick={onNext} className="flex-1 !px-0">YES</GlossyButton>
-            <GlossyButton variant="blue" onClick={onNext} className="flex-1 !px-0">SKIP</GlossyButton>
+            <GlossyButton variant="green" onClick={onSend} className="flex-1 !px-0">YES</GlossyButton>
+            <GlossyButton variant="blue" onClick={onSkip} className="flex-1 !px-0">SKIP</GlossyButton>
           </div>
         </div>
       </GlassCard>
@@ -497,7 +709,7 @@ const SendingFeedbackScreen = ({ onComplete }: { onComplete: () => void }) => {
   }, [onComplete]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-full relative overflow-hidden">
+  <div className="flex flex-col items-center justify-center min-h-full relative overflow-hidden px-6 py-12">
       <div className="absolute inset-0 pointer-events-none">
         {[...Array(20)].map((_, i) => (
           <motion.div
@@ -516,10 +728,10 @@ const SendingFeedbackScreen = ({ onComplete }: { onComplete: () => void }) => {
       <motion.div 
         animate={{ scale: [1, 1.1, 1] }}
         transition={{ duration: 2, repeat: Infinity }}
-        className="text-center space-y-6 relative z-10"
+        className="text-center space-y-6 relative z-10 max-w-xl"
       >
         <Send size={100} className="mx-auto text-white/80" />
-        <h2 className="text-4xl font-bold">Sending your feedback...</h2>
+        <h2 className="text-4xl font-bold leading-tight">Sending your feedback...</h2>
       </motion.div>
     </div>
   );
@@ -527,7 +739,7 @@ const SendingFeedbackScreen = ({ onComplete }: { onComplete: () => void }) => {
 
 // 11. SENT CONFIRMATION
 const ConfirmationScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full space-y-12 px-6 text-center">
+  <div className="flex flex-col items-center justify-center min-h-full space-y-12 px-6 text-center">
     <div className="space-y-4">
       <CheckCircle2 size={120} className="mx-auto text-green-300 drop-shadow-[0_0_20px_#86efac]" />
       <h2 className="text-5xl font-black">Feedback Sent</h2>
@@ -555,7 +767,7 @@ const ConfirmationScreen = ({ onNext }: { onNext: () => void }) => (
 
 // 12. IMPACT MESSAGE
 const ImpactMessageScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full space-y-12 px-8 text-center">
+  <div className="flex flex-col items-center justify-center min-h-full space-y-12 px-8 text-center">
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -574,7 +786,7 @@ const ImpactMessageScreen = ({ onNext }: { onNext: () => void }) => (
 
 // 13. OUTPUT
 const OutputScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full space-y-16 px-6">
+  <div className="flex flex-col items-center justify-center min-h-full space-y-16 px-6">
     <h2 className="text-5xl font-black drop-shadow-lg">Get your report</h2>
     
     <div className="flex space-x-8 w-full max-w-2xl">
@@ -602,7 +814,7 @@ const OutputScreen = ({ onNext }: { onNext: () => void }) => (
 
 // 14. CITY MAP
 const CityMapScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center h-full space-y-10 px-6 w-full">
+  <div className="flex flex-col items-center justify-center min-h-full space-y-10 px-6 w-full">
     <div className="text-center space-y-2">
       <h2 className="text-4xl font-black">Packaging Reports Across Hong Kong</h2>
       <p className="text-xl opacity-80 font-bold text-green-300">+1 from your location</p>
@@ -649,8 +861,11 @@ const CityMapScreen = ({ onNext }: { onNext: () => void }) => (
 );
 
 // 15. END SCREEN
-const FinalScreen = () => (
-  <div className="flex flex-col items-center justify-center h-full text-center space-y-12 px-8">
+const FinalScreen = ({ onRestart }: { onRestart: () => void }) => {
+  const [showRestart, setShowRestart] = useState(false);
+
+  return (
+  <div className="flex flex-col items-center justify-center min-h-full text-center space-y-12 px-8">
     <div className="space-y-8">
       <motion.p
         initial={{ opacity: 0 }}
@@ -665,11 +880,14 @@ const FinalScreen = () => (
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 1.5, delay: 1.5, ease: "easeOut" }}
+        onAnimationComplete={() => setShowRestart(true)}
         className="text-8xl font-black drop-shadow-2xl leading-tight tracking-tighter"
       >
         Now you can't unsee it.
       </motion.h1>
     </div>
+
+    {showRestart && <GlossyButton onClick={onRestart}>Back to Start</GlossyButton>}
     
     <div className="absolute inset-0 pointer-events-none overflow-hidden -z-10">
       <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-400/10 blur-[120px] rounded-full animate-pulse" />
@@ -695,57 +913,98 @@ const FinalScreen = () => (
       ))}
     </div>
   </div>
-);
+  );
+};
 
 // --- Main App ---
 
 export default function App() {
+  const normalizePath = (pathname: string) => (pathname.replace(/\/+$/, '') === '/debug' ? '/debug' : '/');
+  const [pathname, setPathname] = useState(() => normalizePath(window.location.pathname));
   const [step, setStep] = useState(0);
-  const [weights, setWeights] = useState({ before: 0, after: 0 });
+  const [weights, setWeights] = useState<{ before: number | null; after: number | null }>({ before: null, after: null });
   const [sortData, setSortData] = useState(null);
+  const { sensorState } = useLiveSensorState();
+
+  useEffect(() => {
+    const handlePopState = () => setPathname(normalizePath(window.location.pathname));
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = (nextPath: '/' | '/debug') => {
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, '', nextPath);
+    }
+    setPathname(nextPath);
+  };
+
+  const closeDebug = () => navigateTo('/');
+  const isDebugRoute = pathname === '/debug';
+  const hasHeader = step > 0 && step < 15;
+  const calibrated = sensorState?.calibrated ?? false;
+  const liveWeight = sensorState?.grams ?? null;
 
   const nextStep = () => setStep(s => s + 1);
 
   const renderStep = () => {
     switch (step) {
       case 0: return <WelcomeScreen onStart={nextStep} />;
-      case 1: return <WeighStep1Screen onConfirm={(w) => { setWeights(p => ({ ...p, before: w })); nextStep(); }} />;
+      case 1: return (
+        <WeighStep1Screen
+          liveWeight={liveWeight}
+          calibrated={calibrated}
+          onConfirm={(w) => { setWeights(p => ({ ...p, before: w })); nextStep(); }}
+        />
+      );
       case 2: return <UnpackScreen onNext={nextStep} />;
       case 3: return <SortMaterialsScreen onNext={(data) => { setSortData(data); nextStep(); }} />;
-      case 4: return <WeighStep2Screen onConfirm={(w) => { setWeights(p => ({ ...p, after: w })); nextStep(); }} />;
+      case 4: return (
+        <WeighStep2Screen
+          liveWeight={liveWeight}
+          calibrated={calibrated}
+          onConfirm={(w) => { setWeights(p => ({ ...p, after: w })); nextStep(); }}
+        />
+      );
       case 5: return <AnalyzingScreen onComplete={nextStep} />;
-      case 6: return <ResultsScreen onNext={nextStep} />;
+      case 6: return <ResultsScreen before={weights.before} after={weights.after} onNext={nextStep} />;
       case 7: return <ImpactScreen onNext={nextStep} />;
       case 8: return <JudgmentScreen onNext={nextStep} />;
-      case 9: return <RatingScreen onNext={nextStep} />;
+      case 9: return <RatingScreen onSend={nextStep} onSkip={() => setStep(12)} />;
       case 10: return <SendingFeedbackScreen onComplete={nextStep} />;
       case 11: return <ConfirmationScreen onNext={nextStep} />;
       case 12: return <ImpactMessageScreen onNext={nextStep} />;
       case 13: return <OutputScreen onNext={nextStep} />;
       case 14: return <CityMapScreen onNext={nextStep} />;
-      case 15: return <FinalScreen />;
+      case 15: return <FinalScreen onRestart={() => setStep(0)} />;
       default: return null;
     }
   };
 
+  if (isDebugRoute) {
+    return <SensorDebugScreen onClose={closeDebug} />;
+  }
+
   return (
-    <div className="relative w-full h-screen max-w-4xl mx-auto overflow-hidden shadow-2xl border-x border-white/10">
+    <div className="relative isolate flex flex-col w-screen min-h-[100dvh] overflow-hidden">
       <Background />
       
       {/* Header (only for some screens) */}
-      {step > 0 && step < 15 && (
-        <header className="absolute top-0 left-0 right-0 p-8 flex items-center justify-between z-50">
+      {hasHeader && (
+        <header className="relative z-50 flex-none pt-[env(safe-area-inset-top)] px-4 sm:px-8 py-4 grid grid-cols-[auto_1fr_auto] items-center gap-3">
           <button onClick={() => setStep(s => Math.max(0, s - 1))} className="p-3 hover:bg-white/10 rounded-full transition-colors">
             <ArrowLeft size={32} />
           </button>
-          <div className="text-xl font-bold opacity-80 tracking-wide">Unpack Package Guide</div>
-          <button className="p-3 hover:bg-white/10 rounded-full transition-colors">
-            <Menu size={32} />
-          </button>
+          <div className="text-center text-lg font-bold opacity-80 tracking-wide sm:text-xl">Unpack Package Guide</div>
+          <div className="w-14" aria-hidden="true" />
         </header>
       )}
 
-      <main className="h-full pt-20 pb-12">
+      <main
+        className={`relative z-10 flex-1 min-h-0 pb-[env(safe-area-inset-bottom)] ${
+          hasHeader ? 'pt-0' : 'pt-[env(safe-area-inset-top)]'
+        }`}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -753,32 +1012,13 @@ export default function App() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -50 }}
             transition={{ duration: 0.6, ease: "anticipate" }}
-            className="h-full"
+            className="absolute inset-0 w-full h-full px-6 sm:px-8 flex items-center justify-center"
           >
             {renderStep()}
           </motion.div>
         </AnimatePresence>
       </main>
 
-      {/* Status Bar Mockup */}
-      <div className="absolute top-0 left-0 right-0 h-8 flex justify-between px-10 items-center text-xs font-bold opacity-60 z-[60]">
-        <div className="flex items-center space-x-4">
-          <span>9:41 PM Wed Jan 21</span>
-          <Info size={14} />
-        </div>
-        <div className="flex items-center space-x-3">
-          <div className="flex space-x-1">
-            <div className="w-1 h-3 bg-white rounded-full" />
-            <div className="w-1 h-3 bg-white rounded-full" />
-            <div className="w-1 h-3 bg-white rounded-full" />
-            <div className="w-1 h-3 bg-white/30 rounded-full" />
-          </div>
-          <div className="w-6 h-3 border border-white/50 rounded-sm relative">
-            <div className="absolute inset-y-0 left-0 bg-white w-[90%]" />
-          </div>
-          <span>99%</span>
-        </div>
-      </div>
     </div>
   );
 }

@@ -33,9 +33,10 @@ The firmware creates a Wi-Fi access point:
 - Password: `studio1234`
 - Safari page: `http://192.168.4.1/`
 - UI page: `http://192.168.4.1/ui`
+- Debug UI: `http://192.168.4.1/debug`
 - Text check: `http://192.168.4.1/text`
 - Status URL: `http://192.168.4.1/api/status`
-- Debug URL: `http://192.168.4.1/debug`
+- JSON debug: `http://192.168.4.1/api/debug`
 
 Serial output should show:
 
