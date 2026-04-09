@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Printer, 
@@ -92,6 +92,7 @@ const SensorDebugScreen = ({ onClose }: { onClose: () => void }) => {
   const [knownGrams, setKnownGrams] = useState(100);
   const [lastAction, setLastAction] = useState('Waiting for sensor data...');
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const { sensorState } = useLiveSensorState();
 
   const applyPayload = async (path: string, actionName: string) => {
     try {
@@ -112,6 +113,9 @@ const SensorDebugScreen = ({ onClose }: { onClose: () => void }) => {
   const tare = () => void applyPayload('/api/loadcell/tare', 'Tare requested');
   const calibrateWithKnownWeight = () =>
     void applyPayload(`/api/loadcell/calibrate?known_grams=${encodeURIComponent(String(knownGrams))}`, 'Calibrated with known weight');
+
+  const tareAppliedLabel = sensorState?.tare_applied ? 'Yes' : 'No';
+  const calibrationFactorLabel = sensorState?.calibration_factor !== undefined ? sensorState.calibration_factor.toFixed(6) : '—';
 
   return (
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/90 text-white backdrop-blur-md">
@@ -151,6 +155,17 @@ const SensorDebugScreen = ({ onClose }: { onClose: () => void }) => {
               <GlossyButton variant="blue" onClick={tare} className="w-full sm:w-auto">
                 Tare Now
               </GlossyButton>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-white/45">Tare applied</p>
+                <p className="mt-1 text-lg font-black">{tareAppliedLabel}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-white/45">Calibration factor</p>
+                <p className="mt-1 text-lg font-black">{calibrationFactorLabel}</p>
+              </div>
             </div>
 
             <p className="min-h-[1.5rem] text-sm text-white/70 sm:text-base">
@@ -204,6 +219,85 @@ const useLiveSensorState = () => {
   }, [normalizedApiBase]);
 
   return { sensorState, connectionError };
+};
+
+const useAnimatedInteger = (targetValue: number | null, durationMs = 420) => {
+  const [displayValue, setDisplayValue] = useState<number | null>(targetValue === null ? null : Math.round(targetValue));
+  const rafRef = useRef<number | null>(null);
+  const startValueRef = useRef<number | null>(null);
+  const endValueRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const displayValueRef = useRef<number | null>(displayValue);
+
+  useEffect(() => {
+    displayValueRef.current = displayValue;
+  }, [displayValue]);
+
+  useEffect(() => {
+    if (targetValue === null) {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      startValueRef.current = null;
+      endValueRef.current = null;
+      startTimeRef.current = null;
+      setDisplayValue(null);
+      return;
+    }
+
+    const nextTarget = Math.round(targetValue);
+    const currentDisplay = displayValueRef.current;
+
+    if (currentDisplay === null) {
+      setDisplayValue(nextTarget);
+      return;
+    }
+
+    if (nextTarget === currentDisplay) {
+      return;
+    }
+
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    startValueRef.current = currentDisplay;
+    endValueRef.current = nextTarget;
+    startTimeRef.current = performance.now();
+
+    const step = (now: number) => {
+      const startValue = startValueRef.current;
+      const endValue = endValueRef.current;
+      const startTime = startTimeRef.current;
+      if (startValue === null || endValue === null || startTime === null) {
+        return;
+      }
+
+      const elapsed = Math.min(1, (now - startTime) / durationMs);
+      const eased = 1 - Math.pow(1 - elapsed, 3);
+      const interpolated = startValue + (endValue - startValue) * eased;
+      setDisplayValue(Math.round(interpolated));
+
+      if (elapsed < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        rafRef.current = null;
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(step);
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [durationMs, targetValue]);
+
+  return displayValue;
 };
 
 const Background = () => (
@@ -265,33 +359,19 @@ const WeighStep1Screen = ({
   calibrated: boolean;
   onConfirm: (w: number) => void;
 }) => {
-  const displayWeight = calibrated && liveWeight !== null ? Math.round(liveWeight) : null;
+  const displayWeight = useAnimatedInteger(calibrated ? liveWeight : null);
   return (
     <div className="flex flex-col items-center justify-center min-h-full space-y-10">
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold drop-shadow-md">Step 1 — Measure total weight</h2>
-        {!calibrated ? (
-          <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>
-        ) : displayWeight === null ? (
-          <p className="text-lg font-medium text-white/70">Waiting for live sensor data...</p>
-        ) : (
-          <p className="text-lg font-medium text-white/70">Live reading from the ESP32</p>
-        )}
+        {!calibrated && <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>}
       </div>
       <GlassCard className="w-full max-w-md p-16 flex flex-col items-center relative overflow-hidden">
-        <motion.div 
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 2, repeat: Infinity }}
-          className="absolute inset-0 bg-blue-400/5 pointer-events-none"
-        />
+        <div className="absolute inset-0 bg-blue-400/5 pointer-events-none" />
         {displayWeight !== null ? (
-          <motion.div 
-            animate={{ scale: [1, 1.02, 1] }}
-            transition={{ duration: 0.1, repeat: Infinity, repeatType: "reverse" }}
-            className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap"
-          >
+          <div className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap tabular-nums">
             {displayWeight} <span className="text-4xl font-normal opacity-70 ml-2">g</span>
-          </motion.div>
+          </div>
         ) : (
           <div className="text-7xl font-black text-white/40 whitespace-nowrap">— g</div>
         )}
@@ -401,28 +481,18 @@ const WeighStep2Screen = ({
   calibrated: boolean;
   onConfirm: (w: number) => void;
 }) => {
-  const displayWeight = calibrated && liveWeight !== null ? Math.round(liveWeight) : null;
+  const displayWeight = useAnimatedInteger(calibrated ? liveWeight : null);
   return (
     <div className="flex flex-col items-center justify-center min-h-full space-y-10">
       <div className="text-center space-y-2">
         <h2 className="text-3xl font-bold drop-shadow-md">Step 2 — Weigh again</h2>
-        {!calibrated ? (
-          <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>
-        ) : displayWeight === null ? (
-          <p className="text-lg font-medium text-white/70">Waiting for live sensor data...</p>
-        ) : (
-          <p className="text-lg font-medium text-white/70">Live reading from the ESP32</p>
-        )}
+        {!calibrated && <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>}
       </div>
       <GlassCard className="w-full max-w-md p-16 flex flex-col items-center">
         {displayWeight !== null ? (
-          <motion.div 
-            initial={{ scale: 1.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap"
-          >
+          <div className="text-8xl font-bold text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.6)] whitespace-nowrap tabular-nums">
             {displayWeight} <span className="text-4xl font-normal opacity-70 ml-2">g</span>
-          </motion.div>
+          </div>
         ) : (
           <div className="text-7xl font-black text-white/40 whitespace-nowrap">— g</div>
         )}
