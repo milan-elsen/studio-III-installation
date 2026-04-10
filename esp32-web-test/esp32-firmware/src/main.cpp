@@ -14,8 +14,12 @@ constexpr int kHx711ClockPin = 26;
 const IPAddress kApIp(192, 168, 4, 1);
 const IPAddress kApGateway(192, 168, 4, 1);
 const IPAddress kApSubnet(255, 255, 255, 0);
+constexpr unsigned long kPrinterBaudRate = 9600;
+constexpr int kPrinterTxPin = 17;
+constexpr int kPrinterRxPin = 16;
 
 WebServer server(80);
+HardwareSerial printerSerial(2);
 HX711 scale;
 unsigned long bootMillis = 0;
 float calibrationFactor = 1.0f;
@@ -43,6 +47,36 @@ String jsonFloatOrNull(float value, uint8_t decimals = 2) {
   char buffer[24];
   snprintf(buffer, sizeof(buffer), "%.*f", decimals, static_cast<double>(value));
   return String(buffer);
+}
+
+String formatFloat(float value, uint8_t decimals = 2) {
+  if (isnan(value)) return "-";
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%.*f", decimals, static_cast<double>(value));
+  return String(buffer);
+}
+
+void printerPrintLine(const String& line) { printerSerial.println(line); }
+
+void printerFeedLines(uint8_t count = 3) {
+  for (uint8_t i = 0; i < count; ++i) {
+    printerSerial.println();
+  }
+}
+
+String argOrEmpty(const char* name) {
+  if (!server.hasArg(name)) return "";
+  return server.arg(name);
+}
+
+float argOrDefaultFloat(const char* name, float fallback) {
+  const String value = argOrEmpty(name);
+  return value.length() == 0 ? fallback : value.toFloat();
+}
+
+long argOrDefaultLong(const char* name, long fallback) {
+  const String value = argOrEmpty(name);
+  return value.length() == 0 ? fallback : value.toInt();
 }
 
 bool captureLoadCellSnapshot(uint8_t rawSamples = 10, uint8_t weightSamples = 5) {
@@ -260,15 +294,70 @@ void handleCalibrate() {
   server.send(200, "application/json", json);
 }
 
-void handleRoot() {
-  server.send_P(200, "text/html", EspWebBundle::kWebUiHtml);
+void printWasteReport(
+    float packagingGrams,
+    float contentGrams,
+    float wasteGrams,
+    int recyclableCount,
+    int nonRecyclableCount,
+    int reusableCount,
+    int othersCount) {
+  printerFeedLines(2);
+  printerPrintLine("UNPACK THE EXCESS");
+  printerPrintLine("PACKAGE WASTE REPORT");
+  printerPrintLine("--------------------");
+  printerPrintLine("Packaging: " + formatFloat(packagingGrams, 2) + " g");
+  printerPrintLine("Package Content: " + formatFloat(contentGrams, 2) + " g");
+  printerPrintLine("Waste: " + formatFloat(wasteGrams, 2) + " g");
+  printerFeedLines(1);
+  printerPrintLine("Material Summary");
+  printerPrintLine("Recyclable: " + String(recyclableCount));
+  printerPrintLine("Non-recyclable: " + String(nonRecyclableCount));
+  printerPrintLine("Reusable: " + String(reusableCount));
+  printerPrintLine("Others: " + String(othersCount));
+  printerFeedLines(1);
+  printerPrintLine("Small packaging choices add up.");
+  printerPrintLine("Thank you for helping make waste visible.");
+  printerFeedLines(3);
 }
 
-void handleTextRoot() {
-  server.send(
-      200,
-      "text/plain",
-      "ESP32 web test is running. Open /ui for the browser UI, /debug for the debug UI, and /api/loadcell/state for live sensor data.");
+void handlePrintReport() {
+  const float packagingGrams = argOrDefaultFloat("before_grams", NAN);
+  const float contentGrams = argOrDefaultFloat("after_grams", NAN);
+  if (isnan(packagingGrams) || isnan(contentGrams)) {
+    server.send(400, "application/json", errorJson("missing_before_or_after_grams"));
+    return;
+  }
+
+  const float wasteGrams = argOrDefaultFloat("waste_grams", max(0.0f, packagingGrams - contentGrams));
+  const int recyclableCount = static_cast<int>(argOrDefaultLong("recyclable", 0));
+  const int nonRecyclableCount = static_cast<int>(argOrDefaultLong("non_recyclable", 0));
+  const int reusableCount = static_cast<int>(argOrDefaultLong("reusable", 0));
+  const int othersCount = static_cast<int>(argOrDefaultLong("others", 0));
+
+  printWasteReport(
+      packagingGrams,
+      contentGrams,
+      wasteGrams,
+      recyclableCount,
+      nonRecyclableCount,
+      reusableCount,
+      othersCount);
+
+  Serial.printf(
+      "[api/print/report] packaging=%.2f content=%.2f waste=%.2f recyclable=%d non_recyclable=%d reusable=%d others=%d\n",
+      packagingGrams,
+      contentGrams,
+      wasteGrams,
+      recyclableCount,
+      nonRecyclableCount,
+      reusableCount,
+      othersCount);
+  server.send(200, "application/json", actionJson("printed_report"));
+}
+
+void handleRoot() {
+  server.send_P(200, "text/html", EspWebBundle::kWebUiHtml);
 }
 
 void handleDebug() {
@@ -297,7 +386,7 @@ void handleNotFound() {
   String message = "Not found: ";
   message += server.uri();
   message += "\n";
-  message += "Try /, /ui, /debug, /api/status, or /api/loadcell/state\n";
+  message += "Try /, /ui, /calibration, /api/status, /api/loadcell/state, or /api/loadcell/calibration\n";
   server.send(404, "text/plain", message);
 }
 
@@ -323,14 +412,16 @@ void setup() {
 
   bootMillis = millis();
 
+  printerSerial.begin(kPrinterBaudRate, SERIAL_8N1, kPrinterRxPin, kPrinterTxPin);
+
   scale.begin(kHx711DataPin, kHx711ClockPin);
   scale.set_scale(calibrationFactor);
 
   if (scale.is_ready()) {
     Serial.println("Remove all weight. Taring...");
-  tareOffset = scale.read_average(20);
-  tareApplied = true;
-  Serial.println("Tare done.");
+    tareOffset = scale.read_average(20);
+    tareApplied = true;
+    Serial.println("Tare done.");
     captureLoadCellSnapshot();
   } else {
     Serial.println("HX711 not found. Check wiring.");
@@ -343,8 +434,8 @@ void setup() {
 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/ui", HTTP_GET, handleRoot);
+  server.on("/calibration", HTTP_GET, handleRoot);
   server.on("/debug", HTTP_GET, handleRoot);
-  server.on("/text", HTTP_GET, handleTextRoot);
   server.on("/api/status", HTTP_GET, handleStatus);
   server.on("/api/loadcell/state", HTTP_GET, handleStatus);
   server.on("/api/loadcell/raw", HTTP_GET, handleRaw);
@@ -352,12 +443,13 @@ void setup() {
   server.on("/api/loadcell/tare", HTTP_GET, handleTare);
   server.on("/api/loadcell/calibration", HTTP_GET, handleSetCalibration);
   server.on("/api/loadcell/calibrate", HTTP_GET, handleCalibrate);
+  server.on("/api/print/report", HTTP_GET, handlePrintReport);
   server.on("/api/debug", HTTP_GET, handleDebug);
   server.onNotFound(handleNotFound);
   server.begin();
 
   Serial.println();
-  Serial.println("ESP32 web test ready");
+  Serial.println("ESP32 firmware ready");
   Serial.print("AP SSID: ");
   Serial.println(kApSsid);
   Serial.print("AP IP: ");
@@ -367,8 +459,11 @@ void setup() {
   Serial.println("/");
   Serial.println("Status endpoint: http://192.168.4.1/api/status");
   Serial.println("Load cell endpoint: http://192.168.4.1/api/loadcell/state");
-  Serial.println("Debug UI: http://192.168.4.1/debug");
-  Serial.println("JSON debug: http://192.168.4.1/api/debug");
+  Serial.println("Calibration page: http://192.168.4.1/calibration");
+  Serial.println("Calibration endpoint: http://192.168.4.1/api/loadcell/calibration");
+  Serial.println("Print report endpoint: http://192.168.4.1/api/print/report");
+  Serial.println("Calibration UI: http://192.168.4.1/calibration");
+  Serial.println("Debug JSON: http://192.168.4.1/api/debug");
   logStatus("boot");
   nextDebugLogAtMs = millis() + 5000;
 }

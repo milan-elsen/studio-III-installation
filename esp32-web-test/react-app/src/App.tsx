@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Printer, 
@@ -21,6 +21,7 @@ import {
   Send,
   Share2,
 } from 'lucide-react';
+import mapBackground from './assets/map-background.png';
 
 // --- Components ---
 
@@ -67,6 +68,23 @@ const PackageSolidIcon = ({ size = 24, className = "" }: { size?: number; classN
       fill="currentColor"
       fillOpacity={0.9}
       d="M227.8,471.4l63.5,36c4.5,2.6,8.8,2.6,13.4,0l63.4-36c7.4-4.2,11.3-8.5,11.3-20v-63.9c0-8.4-3.1-13.6-9.8-17.5l-57.1-32.4c-9.8-5.6-19.2-5.6-29,0l-57,32.4c-6.9,3.9-9.9,9.1-9.9,17.5v63.9c0,11.5,4,15.8,11.3,20ZM235.1,460.7c-4.7-2.6-6.3-5.3-6.3-9.8v-60.9l62.9,35.9v67l-56.6-32.2ZM360.9,460.7l-56.6,32.2v-67l62.9-35.9v60.9c0,4.4-1.6,7.2-6.2,9.8ZM298,414.7l-62.3-35.3,24.9-14.3,62.3,35.4-24.9,14.1ZM335.9,393.2l-62.5-35.3,15.5-8.8c6.2-3.6,11.9-3.6,18.2,0l53.2,30.3-24.4,13.8Z"
+    />
+  </svg>
+);
+
+const TrashIcon = ({ size = 24, className = "" }: { size?: number; className?: string }) => (
+  <svg
+    viewBox="0 0 75.625 93.9453"
+    width={size}
+    height={size}
+    aria-hidden="true"
+    className={className}
+    preserveAspectRatio="xMidYMid meet"
+  >
+    <path
+      d="M26.25 74.4141C27.7344 74.4141 28.7109 73.4766 28.6719 72.1094L27.4609 30.3125C27.4219 28.9453 26.4453 28.0469 25.0391 28.0469C23.5547 28.0469 22.5781 28.9844 22.6172 30.3516L23.7891 72.1094C23.8281 73.5156 24.8047 74.4141 26.25 74.4141ZM37.8125 74.4141C39.2969 74.4141 40.3516 73.4766 40.3516 72.1094L40.3516 30.3516C40.3516 28.9844 39.2969 28.0469 37.8125 28.0469C36.3281 28.0469 35.3125 28.9844 35.3125 30.3516L35.3125 72.1094C35.3125 73.4766 36.3281 74.4141 37.8125 74.4141ZM49.4141 74.4141C50.8203 74.4141 51.7969 73.5156 51.8359 72.1094L53.0078 30.3516C53.0469 28.9844 52.0703 28.0469 50.5859 28.0469C49.1797 28.0469 48.2031 28.9453 48.1641 30.3516L46.9922 72.1094C46.9531 73.4766 47.9297 74.4141 49.4141 74.4141ZM20.6641 17.8516L26.875 17.8516L26.875 9.49219C26.875 7.26562 28.4375 5.82031 30.7812 5.82031L44.7656 5.82031C47.1094 5.82031 48.6719 7.26562 48.6719 9.49219L48.6719 17.8516L54.8828 17.8516L54.8828 9.10156C54.8828 3.4375 51.2109 0 45.1953 0L30.3516 0C24.3359 0 20.6641 3.4375 20.6641 9.10156ZM2.92969 20.9766L72.7344 20.9766C74.3359 20.9766 75.625 19.6094 75.625 18.0078C75.625 16.4062 74.3359 15.0781 72.7344 15.0781L2.92969 15.0781C1.36719 15.0781 0 16.4062 0 18.0078C0 19.6484 1.36719 20.9766 2.92969 20.9766ZM19.9219 86.9922L55.7422 86.9922C61.3281 86.9922 65.0781 83.3594 65.3516 77.7734L68.0859 20.2344L61.7969 20.2344L59.1797 77.1094C59.1016 79.4531 57.4219 81.0938 55.1172 81.0938L20.4688 81.0938C18.2422 81.0938 16.5625 79.4141 16.4453 77.1094L13.6719 20.2344L7.53906 20.2344L10.3125 77.8125C10.5859 83.3984 14.2578 86.9922 19.9219 86.9922Z"
+      fill="currentColor"
+      fillOpacity={0.85}
     />
   </svg>
 );
@@ -123,7 +141,7 @@ const SensorDebugScreen = ({ onClose }: { onClose: () => void }) => {
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 sm:gap-6">
           <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-6">
             <div className="space-y-2">
-              <p className="text-xs uppercase tracking-[0.3em] text-white/50 sm:text-sm">Sensor Debug</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-white/50 sm:text-sm">Calibration</p>
               <h2 className="text-3xl font-black leading-tight sm:text-4xl">Weight Integration</h2>
             </div>
             <GlossyButton variant="glass" onClick={onClose} className="w-full sm:w-auto">
@@ -363,7 +381,7 @@ const WeighStep1Screen = ({
   return (
     <div className="flex flex-col items-center justify-center min-h-full space-y-10">
       <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold drop-shadow-md">Step 1 — Measure total weight</h2>
+        <h2 className="text-3xl font-bold drop-shadow-md">Weigh your package</h2>
         {!calibrated && <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>}
       </div>
       <GlassCard className="w-full max-w-md p-16 flex flex-col items-center relative overflow-hidden">
@@ -425,7 +443,6 @@ const UnpackScreen = ({ onNext }: { onNext: () => void }) => (
       </div>
       <div className="absolute inset-0 bg-white/10 blur-[100px] -z-10 animate-pulse" />
     </motion.div>
-    <p className="text-xl opacity-70 italic">Slowly fade into physical action...</p>
     <GlossyButton onClick={onNext}>Done Unpacking</GlossyButton>
   </div>
 );
@@ -485,7 +502,7 @@ const WeighStep2Screen = ({
   return (
     <div className="flex flex-col items-center justify-center min-h-full space-y-10">
       <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold drop-shadow-md">Step 2 — Weigh again</h2>
+        <h2 className="text-3xl font-bold drop-shadow-md">Now weigh the package content</h2>
         {!calibrated && <p className="text-lg font-medium text-yellow-200">Calibrate the load cell first to use live weight.</p>}
       </div>
       <GlassCard className="w-full max-w-md p-16 flex flex-col items-center">
@@ -511,15 +528,24 @@ const WeighStep2Screen = ({
 };
 
 // 5. PROCESSING — ANALYZING
-const AnalyzingScreen = ({ onComplete }: { onComplete: () => void }) => {
+const AnalyzingScreen = ({
+  sortData,
+  onComplete,
+}: {
+  sortData: { recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null;
+  onComplete: () => void;
+}) => {
   const [progress, setProgress] = useState(0);
   const [statusIdx, setStatusIdx] = useState(0);
+  const totalSorted = (sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0);
+  const nonRecyclableCount = sortData?.nonRecyclable ?? 0;
+  const nonRecyclablePercent = totalSorted > 0 ? Math.round((nonRecyclableCount / totalSorted) * 100) : 0;
   const statusTexts = [
     "Scanning materials...",
     "Calculating weight difference...",
     "Evaluating packaging level...",
     "Material breakdown analyzed",
-    "Non-recyclable materials: 60%"
+    nonRecyclableCount > 0 ? `Non-recyclable materials: ${nonRecyclablePercent}%` : null
   ];
 
   useEffect(() => {
@@ -574,7 +600,7 @@ const AnalyzingScreen = ({ onComplete }: { onComplete: () => void }) => {
             exit={{ opacity: 0, y: -10 }}
             className="text-2xl font-medium h-8"
           >
-            {statusTexts[statusIdx]}
+            {statusTexts[statusIdx] ?? ''}
           </motion.p>
         </AnimatePresence>
 
@@ -590,7 +616,17 @@ const AnalyzingScreen = ({ onComplete }: { onComplete: () => void }) => {
 };
 
 // 6. RESULT — OVERPACKAGING DETECTED
-const ResultsScreen = ({ before, after, onNext }: { before: number | null; after: number | null; onNext: () => void }) => {
+const ResultsScreen = ({
+  before,
+  after,
+  sortData,
+  onNext,
+}: {
+  before: number | null;
+  after: number | null;
+  sortData: { recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null;
+  onNext: () => void;
+}) => {
   const removed = before !== null && after !== null ? Math.max(before - after, 0) : null;
   const maxWeight = Math.max(before ?? 0, after ?? 0, 1);
   const beforeHeight = before !== null ? `${Math.max(10, (before / maxWeight) * 100)}%` : '10%';
@@ -599,11 +635,17 @@ const ResultsScreen = ({ before, after, onNext }: { before: number | null; after
   return (
   <div className="flex flex-col items-center justify-center min-h-full space-y-8 px-6">
     <div className="text-center space-y-2">
-      <h2 className="text-2xl font-medium opacity-80">Packaging Removed</h2>
-      <p className="text-6xl font-black">{removed === null ? '—' : `${removed} g`}</p>
+      <h2 className="text-2xl font-medium opacity-80">Packaging vs Package Content</h2>
     </div>
     
     <GlassCard className="w-full max-w-sm p-10 space-y-8">
+      <div className="flex justify-center">
+        <TrashIcon size={96} className="text-white/25 drop-shadow-[0_0_16px_rgba(255,255,255,0.1)]" />
+      </div>
+      <div className="text-center space-y-1">
+        <p className="text-xs uppercase tracking-[0.3em] text-white/45">Waste</p>
+        <p className="text-5xl font-black">{removed === null ? '—' : `${removed} g`}</p>
+      </div>
       <div className="flex justify-around items-end h-64 pb-8 border-b border-white/10">
         <div className="flex flex-col items-center space-y-3">
           <div className="text-xl font-bold">{before === null ? '—' : `${before} g`}</div>
@@ -612,7 +654,7 @@ const ResultsScreen = ({ before, after, onNext }: { before: number | null; after
             animate={{ height: beforeHeight }}
             className="w-20 bg-gradient-to-t from-blue-600/60 to-blue-400/80 rounded-t-2xl border border-white/20"
           />
-          <div className="text-lg opacity-70">Before</div>
+          <div className="text-lg opacity-70">Total</div>
         </div>
         <div className="flex flex-col items-center space-y-3">
           <div className="text-xl font-bold">{after === null ? '—' : `${after} g`}</div>
@@ -621,7 +663,7 @@ const ResultsScreen = ({ before, after, onNext }: { before: number | null; after
             animate={{ height: afterHeight }}
             className="w-20 bg-gradient-to-t from-emerald-600/60 to-emerald-400/80 rounded-t-2xl border border-white/20"
           />
-          <div className="text-lg opacity-70">After</div>
+          <div className="text-lg opacity-70">Package Content</div>
         </div>
       </div>
     </GlassCard>
@@ -632,7 +674,9 @@ const ResultsScreen = ({ before, after, onNext }: { before: number | null; after
       className="w-full max-w-sm bg-red-600/90 backdrop-blur-xl rounded-[2rem] p-6 text-center border-2 border-red-400/50 shadow-2xl"
     >
       <h3 className="text-2xl font-black uppercase tracking-widest mb-1">Excessive Packaging Detected</h3>
-      <p className="text-lg font-medium opacity-90">Majority of removed materials are non-recyclable.</p>
+      {((sortData?.nonRecyclable ?? 0) > ((sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0)) / 2) && (
+        <p className="text-lg font-medium opacity-90">Majority of removed materials are non-recyclable.</p>
+      )}
     </motion.div>
 
     <GlossyButton variant="glass" onClick={onNext}>Continue</GlossyButton>
@@ -677,9 +721,12 @@ const ImpactScreen = ({ onNext }: { onNext: () => void }) => (
 
     <div className="space-y-4">
       <p className="text-2xl font-bold text-blue-200">Equivalent to 3 Plastic Bottles of Waste</p>
-      <button onClick={onNext} className="text-2xl font-bold animate-bounce flex flex-col items-center space-y-2 text-white/80 hover:text-white transition-colors">
-        <span>Tap to see details</span>
-        <ArrowLeft className="rotate-270" />
+      <button
+        onClick={onNext}
+        className="mx-auto flex w-full max-w-xs flex-col items-center justify-center gap-2 text-center text-2xl font-bold animate-bounce text-white/80 transition-colors hover:text-white"
+      >
+        <span className="w-full text-center">Tap to see details</span>
+        <ArrowLeft className="mx-auto rotate-270" />
       </button>
     </div>
   </div>
@@ -695,9 +742,9 @@ const JudgmentScreen = ({ onNext }: { onNext: () => void }) => {
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-1000">
       <motion.h2 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="text-5xl font-black text-center px-12 leading-tight"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="text-5xl font-black text-center px-12 leading-tight transform-gpu will-change-transform"
       >
         How acceptable is this packaging?
       </motion.h2>
@@ -762,8 +809,8 @@ const RatingScreen = ({ onSend, onSkip }: { onSend: () => void; onSkip: () => vo
         <div className="text-center space-y-6">
           <p className="text-3xl font-black">Send feedback to seller?</p>
           <div className="flex space-x-6">
-            <GlossyButton variant="green" onClick={onSend} className="flex-1 !px-0">YES</GlossyButton>
-            <GlossyButton variant="blue" onClick={onSkip} className="flex-1 !px-0">SKIP</GlossyButton>
+            <GlossyButton variant="blue" onClick={onSkip} className="flex-1 !px-0">Skip</GlossyButton>
+            <GlossyButton variant="green" onClick={onSend} className="flex-1 !px-0">Send</GlossyButton>
           </div>
         </div>
       </GlassCard>
@@ -844,7 +891,7 @@ const ImpactMessageScreen = ({ onNext }: { onNext: () => void }) => (
       className="space-y-8"
     >
       <h2 className="text-5xl font-black leading-tight">
-        "Change only happens when feedback is visible."
+        Change only happens when feedback is visible.
       </h2>
       <p className="text-2xl opacity-80 font-medium">
         This report contributes to improving packaging practices.
@@ -855,32 +902,71 @@ const ImpactMessageScreen = ({ onNext }: { onNext: () => void }) => (
 );
 
 // 13. OUTPUT
-const OutputScreen = ({ onNext }: { onNext: () => void }) => (
-  <div className="flex flex-col items-center justify-center min-h-full space-y-16 px-6">
-    <h2 className="text-5xl font-black drop-shadow-lg">Get your report</h2>
-    
-    <div className="flex space-x-8 w-full max-w-2xl">
-      <GlassCard className="flex-1 flex flex-col items-center justify-between p-10 space-y-10 h-96 group hover:bg-white/30 transition-all cursor-pointer">
-        <Printer size={120} className="text-white/80 group-hover:scale-110 transition-transform" />
-        <div className="text-center w-full">
-          <h3 className="text-3xl font-bold mb-6">Print Report</h3>
-          <GlossyButton variant="blue" onClick={onNext} className="w-full !px-0">PRINT</GlossyButton>
-        </div>
-      </GlassCard>
+const OutputScreen = ({
+  before,
+  after,
+  sortData,
+  onPrint,
+  onViewMap,
+}: {
+  before: number | null;
+  after: number | null;
+  sortData: { recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null;
+  onPrint: () => Promise<void>;
+  onViewMap: () => void;
+}) => {
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-      <GlassCard className="flex-1 flex flex-col items-center justify-between p-10 space-y-10 h-96 group hover:bg-white/30 transition-all cursor-pointer">
-        <div className="bg-white p-4 rounded-2xl group-hover:rotate-6 transition-transform">
-          <QrCode size={120} className="text-black" />
-        </div>
-        <div className="text-center">
-          <h3 className="text-3xl font-bold mb-2">Scan QR</h3>
-          <p className="text-lg opacity-70">Scan to view on another device.</p>
-        </div>
-      </GlassCard>
+  const handlePrint = async () => {
+    try {
+      setIsPrinting(true);
+      setError(null);
+      await onPrint();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Printing failed';
+      setError(message);
+      setIsPrinting(false);
+    }
+  };
+
+  const canPrint = before !== null && after !== null;
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-full space-y-16 px-6">
+      <h2 className="text-5xl font-black drop-shadow-lg">Get your report</h2>
+      
+      <div className="flex space-x-8 w-full max-w-2xl">
+        <GlassCard className="flex-1 flex flex-col items-center justify-between p-10 space-y-10 h-96 group hover:bg-white/30 transition-all cursor-pointer">
+          <Printer size={120} className="text-white/80 group-hover:scale-110 transition-transform" />
+          <div className="text-center w-full">
+            <h3 className="text-3xl font-bold mb-6">Print Report</h3>
+            <GlossyButton
+              variant="blue"
+              onClick={handlePrint}
+              className="w-full !px-0"
+              disabled={!canPrint || isPrinting}
+            >
+              {isPrinting ? 'PRINTING...' : 'PRINT'}
+            </GlossyButton>
+          </div>
+        </GlassCard>
+
+        <GlassCard className="flex-1 flex flex-col items-center justify-between p-10 space-y-10 h-96 group hover:bg-white/30 transition-all cursor-pointer">
+          <div className="bg-white p-4 rounded-2xl group-hover:rotate-6 transition-transform">
+            <QrCode size={120} className="text-black" />
+          </div>
+          <div className="text-center">
+            <h3 className="text-3xl font-bold mb-2">Scan QR</h3>
+            <p className="text-lg opacity-70">Scan to view on another device.</p>
+          </div>
+        </GlassCard>
+      </div>
+      {error ? <p className="text-lg text-red-200">{error}</p> : null}
+      <GlossyButton variant="glass" onClick={onViewMap}>View Community Map</GlossyButton>
     </div>
-    <GlossyButton variant="glass" onClick={onNext}>View Community Map</GlossyButton>
-  </div>
-);
+  );
+};
 
 // 14. CITY MAP
 const CityMapScreen = ({ onNext }: { onNext: () => void }) => (
@@ -891,13 +977,12 @@ const CityMapScreen = ({ onNext }: { onNext: () => void }) => (
     </div>
 
     <GlassCard className="w-full max-w-2xl aspect-video relative overflow-hidden !p-0 border-4 border-white/20">
-      <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-md" />
-      {/* Mock Map Grid */}
-      <div className="absolute inset-0 grid grid-cols-10 grid-rows-6 opacity-20">
-        {[...Array(60)].map((_, i) => (
-          <div key={i} className="border border-white/20" />
-        ))}
-      </div>
+      <img
+        src={mapBackground}
+        alt="Hong Kong map background"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-white/10 backdrop-blur-[1px]" />
       {/* Pins */}
       {[
         { top: '30%', left: '40%', color: 'red' },
@@ -989,11 +1074,15 @@ const FinalScreen = ({ onRestart }: { onRestart: () => void }) => {
 // --- Main App ---
 
 export default function App() {
-  const normalizePath = (pathname: string) => (pathname.replace(/\/+$/, '') === '/debug' ? '/debug' : '/');
+  const normalizePath = (pathname: string) => {
+    const normalized = pathname.replace(/\/+$/, '');
+    return normalized === '/debug' || normalized === '/calibration' ? '/calibration' : '/';
+  };
+  const apiBase = getLiveSensorApiBase().replace(/\/$/, '');
   const [pathname, setPathname] = useState(() => normalizePath(window.location.pathname));
   const [step, setStep] = useState(0);
   const [weights, setWeights] = useState<{ before: number | null; after: number | null }>({ before: null, after: null });
-  const [sortData, setSortData] = useState(null);
+  const [sortData, setSortData] = useState<{ recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null>(null);
   const { sensorState } = useLiveSensorState();
 
   useEffect(() => {
@@ -1002,7 +1091,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const navigateTo = (nextPath: '/' | '/debug') => {
+  const navigateTo = (nextPath: '/' | '/calibration') => {
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, '', nextPath);
     }
@@ -1010,12 +1099,36 @@ export default function App() {
   };
 
   const closeDebug = () => navigateTo('/');
-  const isDebugRoute = pathname === '/debug';
+  const isDebugRoute = pathname === '/calibration';
   const hasHeader = step > 0 && step < 15;
   const calibrated = sensorState?.calibrated ?? false;
   const liveWeight = sensorState?.grams ?? null;
 
-  const nextStep = () => setStep(s => s + 1);
+  const nextStep = useCallback(() => setStep(s => s + 1), []);
+  const restartFlow = useCallback(() => setStep(0), []);
+  const handlePrintReport = useCallback(async () => {
+    if (weights.before === null || weights.after === null) {
+      throw new Error('Missing weight readings');
+    }
+
+    const payload = new URLSearchParams({
+      before_grams: String(weights.before),
+      after_grams: String(weights.after),
+      waste_grams: String(Math.max(weights.before - weights.after, 0)),
+      recyclable: String(sortData?.recyclable ?? 0),
+      non_recyclable: String(sortData?.nonRecyclable ?? 0),
+      reusable: String(sortData?.reusable ?? 0),
+      others: String(sortData?.others ?? 0),
+    });
+
+    const response = await fetch(`${apiBase}/api/print/report?${payload.toString()}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    setStep(14);
+  }, [apiBase, sortData, weights.after, weights.before]);
 
   const renderStep = () => {
     switch (step) {
@@ -1036,17 +1149,17 @@ export default function App() {
           onConfirm={(w) => { setWeights(p => ({ ...p, after: w })); nextStep(); }}
         />
       );
-      case 5: return <AnalyzingScreen onComplete={nextStep} />;
-      case 6: return <ResultsScreen before={weights.before} after={weights.after} onNext={nextStep} />;
+      case 5: return <AnalyzingScreen sortData={sortData} onComplete={nextStep} />;
+      case 6: return <ResultsScreen before={weights.before} after={weights.after} sortData={sortData} onNext={nextStep} />;
       case 7: return <ImpactScreen onNext={nextStep} />;
       case 8: return <JudgmentScreen onNext={nextStep} />;
       case 9: return <RatingScreen onSend={nextStep} onSkip={() => setStep(12)} />;
       case 10: return <SendingFeedbackScreen onComplete={nextStep} />;
       case 11: return <ConfirmationScreen onNext={nextStep} />;
       case 12: return <ImpactMessageScreen onNext={nextStep} />;
-      case 13: return <OutputScreen onNext={nextStep} />;
+      case 13: return <OutputScreen before={weights.before} after={weights.after} sortData={sortData} onPrint={handlePrintReport} onViewMap={() => setStep(14)} />;
       case 14: return <CityMapScreen onNext={nextStep} />;
-      case 15: return <FinalScreen onRestart={() => setStep(0)} />;
+      case 15: return <FinalScreen onRestart={restartFlow} />;
       default: return null;
     }
   };
