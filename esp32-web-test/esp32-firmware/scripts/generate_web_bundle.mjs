@@ -34,9 +34,13 @@ function rawString(delim, content) {
 const htmlPath = path.join(reactDistRoot, 'index.html');
 const cssPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.css');
 const jsPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.js');
+const mapPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.jpg');
 
 const css = escapeForHtml(fs.readFileSync(cssPath, 'utf8'));
-const js = escapeForHtml(fs.readFileSync(jsPath, 'utf8'));
+const mapDataUri = `data:image/jpeg;base64,${fs.readFileSync(mapPath).toString('base64')}`;
+const js = escapeForHtml(
+  fs.readFileSync(jsPath, 'utf8').replace(/\/assets\/map-background-[^"'`\s]+\.jpg/g, mapDataUri),
+);
 
 const html = `<!doctype html>
 <html lang="en">
@@ -52,7 +56,12 @@ const html = `<!doctype html>
   </body>
 </html>`;
 
-const fingerprint = crypto.createHash('sha256').update(htmlPath + cssPath + jsPath + html).digest('hex').slice(0, 8).toUpperCase();
+const fingerprint = crypto
+  .createHash('sha256')
+  .update(htmlPath + cssPath + jsPath + mapPath + html)
+  .digest('hex')
+  .slice(0, 8)
+  .toUpperCase();
 const delim = `WEBUI${fingerprint}`;
 
 const header = `#pragma once

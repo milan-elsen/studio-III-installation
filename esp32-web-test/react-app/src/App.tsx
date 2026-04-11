@@ -21,7 +21,7 @@ import {
   Send,
   Share2,
 } from 'lucide-react';
-import mapBackground from './assets/map-background.png';
+import mapBackground from './assets/map-background.jpg';
 
 // --- Components ---
 
@@ -638,15 +638,15 @@ const ResultsScreen = ({
       <h2 className="text-2xl font-medium opacity-80">Packaging vs Package Content</h2>
     </div>
     
-    <GlassCard className="w-full max-w-sm p-10 space-y-8">
+    <GlassCard className="w-full max-w-sm p-10 space-y-5">
       <div className="flex justify-center">
         <TrashIcon size={96} className="text-white/25 drop-shadow-[0_0_16px_rgba(255,255,255,0.1)]" />
       </div>
-      <div className="text-center space-y-1">
+      <div className="text-center space-y-0.5 -mt-2">
         <p className="text-xs uppercase tracking-[0.3em] text-white/45">Waste</p>
         <p className="text-5xl font-black">{removed === null ? '—' : `${removed} g`}</p>
       </div>
-      <div className="flex justify-around items-end h-64 pb-8 border-b border-white/10">
+      <div className="flex justify-around items-end h-64 pb-6 border-b border-white/10 -mt-1">
         <div className="flex flex-col items-center space-y-3">
           <div className="text-xl font-bold">{before === null ? '—' : `${before} g`}</div>
           <motion.div 
@@ -673,7 +673,7 @@ const ResultsScreen = ({
       animate={{ scale: 1, opacity: 1 }}
       className="w-full max-w-sm bg-red-600/90 backdrop-blur-xl rounded-[2rem] p-6 text-center border-2 border-red-400/50 shadow-2xl"
     >
-      <h3 className="text-2xl font-black uppercase tracking-widest mb-1">Excessive Packaging Detected</h3>
+      <h3 className="text-2xl font-black tracking-wide mb-1">Excessive Packaging Detected</h3>
       {((sortData?.nonRecyclable ?? 0) > ((sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0)) / 2) && (
         <p className="text-lg font-medium opacity-90">Majority of removed materials are non-recyclable.</p>
       )}
