@@ -5,6 +5,7 @@
 #include <WiFi.h>
 
 #include "generated/web_bundle.h"
+#include "generated/receipt_image.h"
 
 namespace {
 constexpr char kApSsid[] = "StudioIII-Test";
@@ -49,19 +50,143 @@ String jsonFloatOrNull(float value, uint8_t decimals = 2) {
   return String(buffer);
 }
 
-String formatFloat(float value, uint8_t decimals = 2) {
-  if (isnan(value)) return "-";
-  char buffer[24];
-  snprintf(buffer, sizeof(buffer), "%.*f", decimals, static_cast<double>(value));
-  return String(buffer);
-}
-
 void printerPrintLine(const String& line) { printerSerial.println(line); }
 
 void printerFeedLines(uint8_t count = 3) {
   for (uint8_t i = 0; i < count; ++i) {
     printerSerial.println();
   }
+}
+
+void printerSetBold(bool enabled) {
+  printerSerial.write(0x1B);
+  printerSerial.write('E');
+  printerSerial.write(enabled ? 1 : 0);
+}
+
+void printerSetCenterAligned(bool enabled) {
+  printerSerial.write(0x1B);
+  printerSerial.write('a');
+  printerSerial.write(enabled ? 1 : 0);
+}
+
+bool parsePbmHeader(const uint8_t* data, size_t size, size_t& payloadOffset, int& width, int& height) {
+  auto skipWhitespace = [&](size_t& index) {
+    while (index < size) {
+      const char c = static_cast<char>(data[index]);
+      if (c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+        break;
+      }
+      ++index;
+    }
+  };
+
+  auto readToken = [&](size_t& index, String& token) -> bool {
+    skipWhitespace(index);
+    if (index >= size) {
+      return false;
+    }
+
+    token = "";
+    while (index < size) {
+      const char c = static_cast<char>(data[index]);
+      if (c == ' ' || c == '\n' || c == '\r' || c == '\t') {
+        break;
+      }
+      token += c;
+      ++index;
+    }
+
+    return token.length() > 0;
+  };
+
+  size_t index = 0;
+  String token;
+  if (!readToken(index, token) || token != "P4") {
+    return false;
+  }
+  if (!readToken(index, token)) {
+    return false;
+  }
+  width = token.toInt();
+  if (!readToken(index, token)) {
+    return false;
+  }
+  height = token.toInt();
+  skipWhitespace(index);
+  payloadOffset = index;
+  return width > 0 && height > 0 && payloadOffset < size;
+}
+
+void printerWriteRasterImage(const uint8_t* data, size_t size) {
+  size_t payloadOffset = 0;
+  int width = 0;
+  int height = 0;
+  if (!parsePbmHeader(data, size, payloadOffset, width, height)) {
+    Serial.println("Unable to parse receipt image.");
+    return;
+  }
+
+  const int bytesPerRow = (width + 7) / 8;
+  printerSerial.write(0x1D);
+  printerSerial.write('v');
+  printerSerial.write('0');
+  printerSerial.write(0x00);
+  printerSerial.write(static_cast<uint8_t>(bytesPerRow & 0xFF));
+  printerSerial.write(static_cast<uint8_t>((bytesPerRow >> 8) & 0xFF));
+  printerSerial.write(static_cast<uint8_t>(height & 0xFF));
+  printerSerial.write(static_cast<uint8_t>((height >> 8) & 0xFF));
+  printerSerial.write(data + payloadOffset, size - payloadOffset);
+}
+
+void printReceiptImage() {
+  printerSetCenterAligned(true);
+  printerWriteRasterImage(kReceiptImagePbm, kReceiptImagePbm_len);
+  printerSetCenterAligned(false);
+}
+
+String materialSummarySentence(int recyclableCount, int nonRecyclableCount, int reusableCount, int othersCount) {
+  const bool recyclableOnly = recyclableCount > 0 && nonRecyclableCount == 0 && reusableCount == 0 && othersCount == 0;
+  const bool nonRecyclableOnly = nonRecyclableCount > 0 && recyclableCount == 0 && reusableCount == 0 && othersCount == 0;
+  const bool reusableOnly = reusableCount > 0 && recyclableCount == 0 && nonRecyclableCount == 0 && othersCount == 0;
+  if (recyclableOnly) {
+    return "All materials fully recyclable\n:)";
+  }
+  if (nonRecyclableOnly) {
+    return "None of the materials are recyclable\n:(";
+  }
+  if (reusableOnly) {
+    return "All materials are reusable\n:)";
+  }
+
+  return "";
+}
+
+void printMaterialSummary(int recyclableCount, int nonRecyclableCount, int reusableCount, int othersCount) {
+  const int total = recyclableCount + nonRecyclableCount + reusableCount + othersCount;
+  if (total <= 0) {
+    return;
+  }
+
+  const bool othersOnly = othersCount > 0 && recyclableCount == 0 && nonRecyclableCount == 0 && reusableCount == 0;
+  if (othersOnly) {
+    return;
+  }
+
+  printerSetCenterAligned(true);
+  const String sentence = materialSummarySentence(recyclableCount, nonRecyclableCount, reusableCount, othersCount);
+  if (sentence.length() > 0) {
+    printerPrintLine(sentence);
+    printerSetCenterAligned(false);
+    return;
+  }
+
+  printerPrintLine("Material Summary");
+  printerPrintLine("Recyclable: " + String(recyclableCount));
+  printerPrintLine("Non-recyclable: " + String(nonRecyclableCount));
+  printerPrintLine("Reusable: " + String(reusableCount));
+  printerPrintLine("Others: " + String(othersCount));
+  printerSetCenterAligned(false);
 }
 
 String argOrEmpty(const char* name) {
@@ -295,29 +420,33 @@ void handleCalibrate() {
 }
 
 void printWasteReport(
-    float packagingGrams,
-    float contentGrams,
+    float totalWeightGrams,
     float wasteGrams,
     int recyclableCount,
     int nonRecyclableCount,
     int reusableCount,
     int othersCount) {
   printerFeedLines(2);
+  printerSetCenterAligned(true);
+  printerSetBold(true);
   printerPrintLine("UNPACK THE EXCESS");
-  printerPrintLine("PACKAGE WASTE REPORT");
-  printerPrintLine("--------------------");
-  printerPrintLine("Packaging: " + formatFloat(packagingGrams, 2) + " g");
-  printerPrintLine("Package Content: " + formatFloat(contentGrams, 2) + " g");
-  printerPrintLine("Waste: " + formatFloat(wasteGrams, 2) + " g");
+  printerSetCenterAligned(false);
+  printerPrintLine("----------------------------");
+  printerSetCenterAligned(true);
+  printerPrintLine(String(static_cast<long>(wasteGrams + 0.5f)) + " g");
+  printerPrintLine("Waste");
+  printerPrintLine("Total weight: " + String(static_cast<long>(totalWeightGrams + 0.5f)) + " g");
+  printerSetCenterAligned(false);
   printerFeedLines(1);
-  printerPrintLine("Material Summary");
-  printerPrintLine("Recyclable: " + String(recyclableCount));
-  printerPrintLine("Non-recyclable: " + String(nonRecyclableCount));
-  printerPrintLine("Reusable: " + String(reusableCount));
-  printerPrintLine("Others: " + String(othersCount));
+  printReceiptImage();
   printerFeedLines(1);
-  printerPrintLine("Small packaging choices add up.");
-  printerPrintLine("Thank you for helping make waste visible.");
+  printMaterialSummary(recyclableCount, nonRecyclableCount, reusableCount, othersCount);
+  printerFeedLines(1);
+  printerPrintLine("Thank you for making");
+  printerPrintLine("excessive waste visible");
+  printerPrintLine("and recycling as much as");
+  printerPrintLine("possible!");
+  printerSetBold(false);
   printerFeedLines(3);
 }
 
@@ -337,7 +466,6 @@ void handlePrintReport() {
 
   printWasteReport(
       packagingGrams,
-      contentGrams,
       wasteGrams,
       recyclableCount,
       nonRecyclableCount,
