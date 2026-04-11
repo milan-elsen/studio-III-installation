@@ -616,6 +616,12 @@ const AnalyzingScreen = ({
 };
 
 // 6. RESULT — OVERPACKAGING DETECTED
+const OVERPACKAGING_THRESHOLD_GRAMS = 15;
+const MATERIAL_LAYER_PENALTY_GRAMS = 2;
+const NON_RECYCLABLE_PENALTY_GRAMS = 3;
+const MIN_EFFECTIVE_THRESHOLD_GRAMS = 3;
+const NON_RECYCLABLE_THRESHOLD_RATIO = 0.25;
+
 const ResultsScreen = ({
   before,
   after,
@@ -628,6 +634,17 @@ const ResultsScreen = ({
   onNext: () => void;
 }) => {
   const removed = before !== null && after !== null ? Math.max(before - after, 0) : null;
+  const totalSorted =
+    (sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0);
+  const nonRecyclableRatio = totalSorted > 0 ? (sortData?.nonRecyclable ?? 0) / totalSorted : 0;
+  const materialLayerPenalty = totalSorted * MATERIAL_LAYER_PENALTY_GRAMS;
+  const nonRecyclablePenalty = nonRecyclableRatio > NON_RECYCLABLE_THRESHOLD_RATIO ? NON_RECYCLABLE_PENALTY_GRAMS : 0;
+  const effectiveThreshold = Math.max(
+    MIN_EFFECTIVE_THRESHOLD_GRAMS,
+    OVERPACKAGING_THRESHOLD_GRAMS - materialLayerPenalty - nonRecyclablePenalty,
+  );
+  const isOverpackaged =
+    removed !== null ? removed > effectiveThreshold : false;
   const maxWeight = Math.max(before ?? 0, after ?? 0, 1);
   const beforeHeight = before !== null ? `${Math.max(10, (before / maxWeight) * 100)}%` : '10%';
   const afterHeight = after !== null ? `${Math.max(10, (after / maxWeight) * 100)}%` : '10%';
@@ -638,15 +655,15 @@ const ResultsScreen = ({
       <h2 className="text-2xl font-medium opacity-80">Packaging vs Package Content</h2>
     </div>
     
-    <GlassCard className="w-full max-w-sm p-10 space-y-5">
+    <GlassCard className="w-full max-w-sm p-10 space-y-3">
       <div className="flex justify-center">
         <TrashIcon size={96} className="text-white/25 drop-shadow-[0_0_16px_rgba(255,255,255,0.1)]" />
       </div>
-      <div className="text-center space-y-0.5 -mt-2">
+      <div className="text-center space-y-0.5 -mt-1">
         <p className="text-xs uppercase tracking-[0.3em] text-white/45">Waste</p>
         <p className="text-5xl font-black">{removed === null ? '—' : `${removed} g`}</p>
       </div>
-      <div className="flex justify-around items-end h-64 pb-6 border-b border-white/10 -mt-1">
+      <div className="flex justify-around items-end h-64 pb-4 border-b border-white/10 -mt-3">
         <div className="flex flex-col items-center space-y-3">
           <div className="text-xl font-bold">{before === null ? '—' : `${before} g`}</div>
           <motion.div 
@@ -671,12 +688,24 @@ const ResultsScreen = ({
     <motion.div 
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      className="w-full max-w-sm bg-red-600/90 backdrop-blur-xl rounded-[2rem] p-6 text-center border-2 border-red-400/50 shadow-2xl"
+      className={`w-full max-w-sm backdrop-blur-xl rounded-[2rem] p-6 text-center border-2 shadow-2xl ${
+        isOverpackaged
+          ? 'bg-red-600/90 border-red-400/50'
+          : 'bg-emerald-600/90 border-emerald-400/50'
+      }`}
     >
-      <h3 className="text-2xl font-black tracking-wide mb-1">Excessive Packaging Detected</h3>
-      {((sortData?.nonRecyclable ?? 0) > ((sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0)) / 2) && (
-        <p className="text-lg font-medium opacity-90">Majority of removed materials are non-recyclable.</p>
-      )}
+      <h3 className="text-2xl font-black tracking-wide mb-1">
+        {isOverpackaged ? 'Excessive Packaging Detected' : 'Packaging Looks Adequate'}
+      </h3>
+      <p className="text-lg font-medium opacity-90">
+        {isOverpackaged
+          ? 'This package uses more material than is justified for its contents.'
+          : 'This package looks reasonably matched to what it contains.'}
+      </p>
+      {isOverpackaged &&
+        ((sortData?.nonRecyclable ?? 0) > ((sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0)) / 2) && (
+          <p className="mt-3 text-lg font-medium opacity-90">Majority of removed materials are non-recyclable.</p>
+        )}
     </motion.div>
 
     <GlossyButton variant="glass" onClick={onNext}>Continue</GlossyButton>
