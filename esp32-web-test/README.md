@@ -1,5 +1,7 @@
 # ESP32 Web Test
 
+This is a development snapshot. The canonical firmware to flash now lives in `../esp32-firmware/`.
+
 This folder is a minimal end-to-end test for an ESP32 serving its own UI and API.
 
 It is intentionally separate from the production firmware and the main iPad app.

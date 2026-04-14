@@ -34,12 +34,20 @@ function rawString(delim, content) {
 const htmlPath = path.join(reactDistRoot, 'index.html');
 const cssPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.css');
 const jsPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.js');
-const mapPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.jpg');
+const assetsDir = path.join(reactDistRoot, 'assets');
+const mapPath = fs.readdirSync(assetsDir)
+  .map((name) => path.join(assetsDir, name))
+  .find((filePath) => filePath.endsWith('.svg') || filePath.endsWith('.jpg'));
+
+if (!mapPath) {
+  throw new Error(`Expected a map asset in ${assetsDir}`);
+}
 
 const css = escapeForHtml(fs.readFileSync(cssPath, 'utf8'));
-const mapDataUri = `data:image/jpeg;base64,${fs.readFileSync(mapPath).toString('base64')}`;
+const mapMimeType = mapPath.endsWith('.svg') ? 'image/svg+xml' : 'image/jpeg';
+const mapDataUri = `data:${mapMimeType};base64,${fs.readFileSync(mapPath).toString('base64')}`;
 const js = escapeForHtml(
-  fs.readFileSync(jsPath, 'utf8').replace(/\/assets\/map-background-[^"'`\s]+\.jpg/g, mapDataUri),
+  fs.readFileSync(jsPath, 'utf8').replace(/\/assets\/map-background-[^"'`\s]+\.(?:svg|jpg)/g, mapDataUri),
 );
 
 const html = `<!doctype html>

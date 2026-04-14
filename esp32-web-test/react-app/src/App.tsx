@@ -21,7 +21,7 @@ import {
   Send,
   Share2,
 } from 'lucide-react';
-import mapBackground from './assets/map-background.jpg';
+import mapBackground from './assets/map-background.svg';
 
 // --- Components ---
 
@@ -622,6 +622,27 @@ const NON_RECYCLABLE_PENALTY_GRAMS = 3;
 const MIN_EFFECTIVE_THRESHOLD_GRAMS = 3;
 const NON_RECYCLABLE_THRESHOLD_RATIO = 0.25;
 
+const evaluatePackaging = (
+  before: number | null,
+  after: number | null,
+  sortData: { recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null,
+) => {
+  const removed = before !== null && after !== null ? Math.max(before - after, 0) : null;
+  const totalSorted =
+    (sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0);
+  const nonRecyclableRatio = totalSorted > 0 ? (sortData?.nonRecyclable ?? 0) / totalSorted : 0;
+  const materialLayerPenalty = totalSorted * MATERIAL_LAYER_PENALTY_GRAMS;
+  const nonRecyclablePenalty = nonRecyclableRatio > NON_RECYCLABLE_THRESHOLD_RATIO ? NON_RECYCLABLE_PENALTY_GRAMS : 0;
+  const effectiveThreshold = Math.max(
+    MIN_EFFECTIVE_THRESHOLD_GRAMS,
+    OVERPACKAGING_THRESHOLD_GRAMS - materialLayerPenalty - nonRecyclablePenalty,
+  );
+  return {
+    removed,
+    isOverpackaged: removed !== null ? removed > effectiveThreshold : false,
+  };
+};
+
 const ResultsScreen = ({
   before,
   after,
@@ -633,18 +654,7 @@ const ResultsScreen = ({
   sortData: { recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null;
   onNext: () => void;
 }) => {
-  const removed = before !== null && after !== null ? Math.max(before - after, 0) : null;
-  const totalSorted =
-    (sortData?.recyclable ?? 0) + (sortData?.nonRecyclable ?? 0) + (sortData?.reusable ?? 0) + (sortData?.others ?? 0);
-  const nonRecyclableRatio = totalSorted > 0 ? (sortData?.nonRecyclable ?? 0) / totalSorted : 0;
-  const materialLayerPenalty = totalSorted * MATERIAL_LAYER_PENALTY_GRAMS;
-  const nonRecyclablePenalty = nonRecyclableRatio > NON_RECYCLABLE_THRESHOLD_RATIO ? NON_RECYCLABLE_PENALTY_GRAMS : 0;
-  const effectiveThreshold = Math.max(
-    MIN_EFFECTIVE_THRESHOLD_GRAMS,
-    OVERPACKAGING_THRESHOLD_GRAMS - materialLayerPenalty - nonRecyclablePenalty,
-  );
-  const isOverpackaged =
-    removed !== null ? removed > effectiveThreshold : false;
+  const { removed, isOverpackaged } = evaluatePackaging(before, after, sortData);
   const maxWeight = Math.max(before ?? 0, after ?? 0, 1);
   const beforeHeight = before !== null ? `${Math.max(10, (before / maxWeight) * 100)}%` : '10%';
   const afterHeight = after !== null ? `${Math.max(10, (after / maxWeight) * 100)}%` : '10%';
@@ -1159,6 +1169,8 @@ export default function App() {
     setStep(14);
   }, [apiBase, sortData, weights.after, weights.before]);
 
+  const shouldShowImpactScreen = evaluatePackaging(weights.before, weights.after, sortData).isOverpackaged;
+
   const renderStep = () => {
     switch (step) {
       case 0: return <WelcomeScreen onStart={nextStep} />;
@@ -1179,8 +1191,16 @@ export default function App() {
         />
       );
       case 5: return <AnalyzingScreen sortData={sortData} onComplete={nextStep} />;
-      case 6: return <ResultsScreen before={weights.before} after={weights.after} sortData={sortData} onNext={nextStep} />;
-      case 7: return <ImpactScreen onNext={nextStep} />;
+      case 6:
+        return (
+          <ResultsScreen
+            before={weights.before}
+            after={weights.after}
+            sortData={sortData}
+            onNext={() => setStep(shouldShowImpactScreen ? 7 : 8)}
+          />
+        );
+      case 7: return shouldShowImpactScreen ? <ImpactScreen onNext={nextStep} /> : <JudgmentScreen onNext={nextStep} />;
       case 8: return <JudgmentScreen onNext={nextStep} />;
       case 9: return <RatingScreen onSend={nextStep} onSkip={() => setStep(12)} />;
       case 10: return <SendingFeedbackScreen onComplete={nextStep} />;

@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "generated/receipt_image.h"
+#include "generated/title_logo.h"
 
 namespace {
 constexpr unsigned long kUsbBaudRate = 115200;
@@ -195,6 +196,12 @@ void printReceiptImage(bool darkMode) {
   printerSetCenterAligned(false);
 }
 
+void printTitleLogo() {
+  printerSetCenterAligned(true);
+  printerWriteRasterImage(kTitleLogoPbm, kTitleLogoPbm_len);
+  printerSetCenterAligned(false);
+}
+
 String materialSummarySentence(int recyclableCount, int nonRecyclableCount, int reusableCount, int othersCount) {
   const bool recyclableOnly = recyclableCount > 0 && nonRecyclableCount == 0 && reusableCount == 0 && othersCount == 0;
   const bool nonRecyclableOnly = nonRecyclableCount > 0 && recyclableCount == 0 && reusableCount == 0 && othersCount == 0;
@@ -245,10 +252,9 @@ void printReceiptTemplate(
     int othersCount,
     bool darkMode) {
   printerFeedLines(2);
-  printerSetCenterAligned(true);
+  printTitleLogo();
+  printerFeedLines(1);
   printerSetBold(true);
-  printerPrintLineDark("UNPACK THE EXCESS", darkMode);
-  printerSetCenterAligned(false);
   printerPrintLineDark("----------------------------", darkMode);
   printerSetCenterAligned(true);
   printerSetTextSize(0x11);

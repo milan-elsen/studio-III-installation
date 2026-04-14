@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <HX711.h>
+#include <math.h>
 #include <limits.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -69,6 +70,12 @@ void printerSetCenterAligned(bool enabled) {
   printerSerial.write(0x1B);
   printerSerial.write('a');
   printerSerial.write(enabled ? 1 : 0);
+}
+
+void printerSetTextSize(uint8_t multiplier) {
+  printerSerial.write(0x1D);
+  printerSerial.write('!');
+  printerSerial.write(multiplier);
 }
 
 bool parsePbmHeader(const uint8_t* data, size_t size, size_t& payloadOffset, int& width, int& height) {
@@ -439,9 +446,11 @@ void printWasteReport(
   printerSetBold(true);
   printerPrintLine("----------------------------");
   printerSetCenterAligned(true);
-  printerPrintLine(String(static_cast<long>(wasteGrams + 0.5f)) + " g");
+  printerSetTextSize(0x11);
+  printerPrintLine(String(lroundf(wasteGrams)) + " g");
+  printerSetTextSize(0x00);
   printerPrintLine("Waste");
-  printerPrintLine("Total weight: " + String(static_cast<long>(totalWeightGrams + 0.5f)) + " g");
+  printerPrintLine("Total weight: " + String(lroundf(totalWeightGrams)) + " g");
   printerSetCenterAligned(false);
   printerFeedLines(1);
   printReceiptImage();
