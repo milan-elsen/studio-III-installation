@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const firmwareRoot = path.resolve(scriptDir, '..');
-const reactDistRoot = path.resolve(firmwareRoot, '../react-app/dist');
+const webAppRoot = path.resolve(firmwareRoot, 'web-app/dist');
 const outFile = path.resolve(firmwareRoot, 'src/generated/web_bundle.h');
 
 function readSingleFile(dir, extension) {
@@ -23,18 +23,19 @@ function escapeForHtml(text) {
     .replace(/<\/script>/gi, '<\\/script>');
 }
 
-function rawString(delim, content) {
-  const marker = `)${delim}"`;
-  if (content.includes(marker)) {
-    throw new Error(`Raw string delimiter collision for ${delim}`);
+function renderByteArray(buffer) {
+  const lines = [];
+  for (let index = 0; index < buffer.length; index += 12) {
+    const chunk = Array.from(buffer.slice(index, index + 12), (byte) => `0x${byte.toString(16).padStart(2, '0').toUpperCase()}`);
+    lines.push(`  ${chunk.join(', ')}${index + 12 < buffer.length ? ',' : ''}`);
   }
-  return `R"${delim}(${content})${delim}"`;
+  return lines.join('\n');
 }
 
-const htmlPath = path.join(reactDistRoot, 'index.html');
-const cssPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.css');
-const jsPath = readSingleFile(path.join(reactDistRoot, 'assets'), '.js');
-const assetsDir = path.join(reactDistRoot, 'assets');
+const htmlPath = path.join(webAppRoot, 'index.html');
+const cssPath = readSingleFile(path.join(webAppRoot, 'assets'), '.css');
+const jsPath = readSingleFile(path.join(webAppRoot, 'assets'), '.js');
+const assetsDir = path.join(webAppRoot, 'assets');
 const mapPath = fs.readdirSync(assetsDir)
   .map((name) => path.join(assetsDir, name))
   .find((filePath) => filePath.endsWith('.svg') || filePath.endsWith('.jpg'));
@@ -55,7 +56,7 @@ const html = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ESP32 Web Test</title>
+    <title>ESP32 Firmware</title>
     <style>${css}</style>
   </head>
   <body>
@@ -64,19 +65,15 @@ const html = `<!doctype html>
   </body>
 </html>`;
 
-const fingerprint = crypto
-  .createHash('sha256')
-  .update(htmlPath + cssPath + jsPath + mapPath + html)
-  .digest('hex')
-  .slice(0, 8)
-  .toUpperCase();
-const delim = `WEBUI${fingerprint}`;
-
+const gzippedHtml = zlib.gzipSync(Buffer.from(html, 'utf8'), { level: 9 });
 const header = `#pragma once
 #include <Arduino.h>
 
 namespace EspWebBundle {
-static const char kWebUiHtml[] PROGMEM = ${rawString(delim, html)};
+static const unsigned char kWebUiHtmlGzip[] PROGMEM = {
+${renderByteArray(gzippedHtml)}
+};
+constexpr size_t kWebUiHtmlGzipSize = ${gzippedHtml.length};
 }  // namespace EspWebBundle
 `;
 

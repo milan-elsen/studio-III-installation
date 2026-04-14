@@ -233,7 +233,7 @@ bool captureLoadCellSnapshot(uint8_t rawSamples = 10, uint8_t weightSamples = 5)
 String stateJson() {
   const bool ready = captureLoadCellSnapshot();
   String json = "{";
-  json += "\"device\":\"esp32-web-test\",";
+  json += "\"device\":\"esp32-firmware\",";
   json += "\"wifi_mode\":\"ap\",";
   json += "\"ssid\":\"";
   json += kApSsid;
@@ -500,7 +500,8 @@ void handlePrintReport() {
 }
 
 void handleRoot() {
-  server.send_P(200, "text/html", EspWebBundle::kWebUiHtml);
+  server.sendHeader("Content-Encoding", "gzip");
+  server.send_P(200, "text/html", reinterpret_cast<const char*>(EspWebBundle::kWebUiHtmlGzip), EspWebBundle::kWebUiHtmlGzipSize);
 }
 
 void handleDebug() {
