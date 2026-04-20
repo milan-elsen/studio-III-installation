@@ -136,7 +136,7 @@ const SensorDebugScreen = ({ onClose }: { onClose: () => void }) => {
   const calibrationFactorLabel = sensorState?.calibration_factor !== undefined ? sensorState.calibration_factor.toFixed(6) : '—';
 
   return (
-    <div className="fixed inset-0 z-[60] overflow-y-auto bg-black/90 text-white backdrop-blur-md">
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-gradient-to-br from-[#0ea5e9] via-[#10b981] to-[#84cc16] text-white backdrop-blur-md">
       <div className="min-h-full px-4 py-[calc(env(safe-area-inset-top)+0.75rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-6">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 sm:gap-6">
           <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-6">
@@ -219,7 +219,10 @@ const useLiveSensorState = () => {
 
         const data = (await response.json()) as SensorState;
         if (!alive) return;
-        setSensorState(data);
+        setSensorState({
+          ...data,
+          grams: typeof data.grams === 'number' ? Math.max(0, data.grams) : data.grams,
+        });
         setConnectionError(null);
       } catch (error) {
         if (!alive) return;
@@ -239,20 +242,21 @@ const useLiveSensorState = () => {
   return { sensorState, connectionError };
 };
 
-const useAnimatedInteger = (targetValue: number | null, durationMs = 420) => {
-  const [displayValue, setDisplayValue] = useState<number | null>(targetValue === null ? null : Math.round(targetValue));
+const useAnimatedInteger = (targetValue: number | null, durationMs = 420, minDeltaToUpdate = 3) => {
+  const normalizedTarget = targetValue === null ? null : Math.max(0, targetValue);
+  const [displayValue, setDisplayValue] = useState<number | null>(normalizedTarget === null ? null : Math.round(normalizedTarget));
   const rafRef = useRef<number | null>(null);
   const startValueRef = useRef<number | null>(null);
   const endValueRef = useRef<number | null>(null);
   const startTimeRef = useRef<number | null>(null);
-  const displayValueRef = useRef<number | null>(displayValue);
+  const displayValueRef = useRef<number | null>(displayValue === null ? null : Math.max(0, displayValue));
 
   useEffect(() => {
-    displayValueRef.current = displayValue;
+    displayValueRef.current = displayValue === null ? null : Math.max(0, displayValue);
   }, [displayValue]);
 
   useEffect(() => {
-    if (targetValue === null) {
+    if (normalizedTarget === null) {
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -264,7 +268,7 @@ const useAnimatedInteger = (targetValue: number | null, durationMs = 420) => {
       return;
     }
 
-    const nextTarget = Math.round(targetValue);
+    const nextTarget = Math.round(normalizedTarget);
     const currentDisplay = displayValueRef.current;
 
     if (currentDisplay === null) {
@@ -272,7 +276,7 @@ const useAnimatedInteger = (targetValue: number | null, durationMs = 420) => {
       return;
     }
 
-    if (nextTarget === currentDisplay) {
+    if (Math.abs(nextTarget - currentDisplay) <= minDeltaToUpdate) {
       return;
     }
 
@@ -296,7 +300,7 @@ const useAnimatedInteger = (targetValue: number | null, durationMs = 420) => {
       const elapsed = Math.min(1, (now - startTime) / durationMs);
       const eased = 1 - Math.pow(1 - elapsed, 3);
       const interpolated = startValue + (endValue - startValue) * eased;
-      setDisplayValue(Math.round(interpolated));
+      setDisplayValue(Math.max(0, Math.round(interpolated)));
 
       if (elapsed < 1) {
         rafRef.current = requestAnimationFrame(step);
@@ -313,9 +317,9 @@ const useAnimatedInteger = (targetValue: number | null, durationMs = 420) => {
         rafRef.current = null;
       }
     };
-  }, [durationMs, targetValue]);
+  }, [durationMs, minDeltaToUpdate, normalizedTarget]);
 
-  return displayValue;
+  return displayValue === null ? null : Math.max(0, displayValue);
 };
 
 const Background = () => (
@@ -611,6 +615,137 @@ const AnalyzingScreen = ({
           />
         </div>
       </div>
+    </div>
+  );
+};
+
+// 5b. PROCESSING - PRINTING
+const PrintingScreen = ({
+  printComplete,
+  onComplete,
+}: {
+  printComplete: boolean;
+  onComplete: () => void;
+}) => {
+  const [progress, setProgress] = useState(0);
+  const [statusIdx, setStatusIdx] = useState(0);
+  const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  const statusTexts = [
+    'Preparing receipt...',
+    'Sending to printer...',
+    'Heating print head...',
+    'Rendering final layout...',
+    'Finishing print job...'
+  ];
+
+  useEffect(() => {
+    let progressTimer: ReturnType<typeof setInterval> | undefined;
+    let textTimer: ReturnType<typeof setInterval> | undefined;
+
+    progressTimer = setInterval(() => {
+      setProgress(prev => {
+        if (printComplete) {
+          if (prev >= 100) {
+            if (progressTimer) clearInterval(progressTimer);
+            if (textTimer) clearInterval(textTimer);
+            return 100;
+          }
+          return prev + 1;
+        }
+        if (prev >= 95) {
+          if (progressTimer) clearInterval(progressTimer);
+          if (textTimer) clearInterval(textTimer);
+          return 95;
+        }
+        return prev + 1;
+      });
+    }, 120);
+
+    textTimer = setInterval(() => {
+      setStatusIdx(prev => (prev + 1) % statusTexts.length);
+    }, 1500);
+
+    return () => {
+      if (progressTimer) clearInterval(progressTimer);
+      if (textTimer) clearInterval(textTimer);
+    };
+  }, [printComplete, statusTexts.length]);
+
+  useEffect(() => {
+    if (progress !== 100 || !printComplete) {
+      return;
+    }
+
+    if (completeTimerRef.current) {
+      clearTimeout(completeTimerRef.current);
+    }
+    completeTimerRef.current = setTimeout(() => onCompleteRef.current(), 1000);
+
+    return () => {
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current);
+        completeTimerRef.current = null;
+      }
+    };
+  }, [printComplete, progress]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-1000 px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col items-center justify-center space-y-12 text-center w-full max-w-xl"
+      >
+        <h2 className="text-4xl font-bold text-center">Printing Receipt...</h2>
+
+        <div className="relative">
+          <div className="glass-orb flex items-center justify-center overflow-hidden">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+              className="absolute inset-0 bg-gradient-to-tr from-amber-200/20 via-transparent to-blue-400/20"
+            />
+            <motion.div
+              animate={{ y: [-100, 100, -100] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              className="absolute inset-x-0 h-1 bg-white/40 blur-sm"
+            />
+            <div className="orb-glow" />
+            <Printer size={80} className="text-white/60 relative z-10" />
+          </div>
+        </div>
+
+        <div className="w-full max-w-sm space-y-6 text-center">
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={statusIdx}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="text-2xl font-medium h-8"
+            >
+              {statusTexts[statusIdx] ?? ''}
+            </motion.p>
+          </AnimatePresence>
+
+          <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden border border-white/20">
+            <motion.div
+              className="h-full bg-gradient-to-r from-amber-400 to-blue-400 shadow-[0_0_15px_#f59e0b]"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <p className="text-lg opacity-70">
+            {printComplete ? 'Finalizing receipt...' : 'Sending data to the printer...'}
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 };
@@ -946,26 +1081,40 @@ const OutputScreen = ({
   after,
   sortData,
   onPrint,
+  onPrinted,
   onViewMap,
 }: {
   before: number | null;
   after: number | null;
   sortData: { recyclable?: number; nonRecyclable?: number; reusable?: number; others?: number } | null;
   onPrint: () => Promise<void>;
+  onPrinted: () => void;
   onViewMap: () => void;
 }) => {
   const [isPrinting, setIsPrinting] = useState(false);
+  const [printComplete, setPrintComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const printInFlightRef = useRef(false);
 
   const handlePrint = async () => {
+    if (isPrinting || printInFlightRef.current) {
+      return;
+    }
+    printInFlightRef.current = true;
+    setIsPrinting(true);
+    setPrintComplete(false);
+    setError(null);
+
     try {
-      setIsPrinting(true);
-      setError(null);
       await onPrint();
+      setPrintComplete(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Printing failed';
       setError(message);
       setIsPrinting(false);
+      setPrintComplete(false);
+    } finally {
+      printInFlightRef.current = false;
     }
   };
 
@@ -1003,6 +1152,16 @@ const OutputScreen = ({
       </div>
       {error ? <p className="text-lg text-red-200">{error}</p> : null}
       <GlossyButton variant="glass" onClick={onViewMap}>View Community Map</GlossyButton>
+      {isPrinting && (
+        <PrintingScreen
+          printComplete={printComplete}
+          onComplete={() => {
+            setIsPrinting(false);
+            setPrintComplete(false);
+            onPrinted();
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -1166,7 +1325,6 @@ export default function App() {
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    setStep(14);
   }, [apiBase, sortData, weights.after, weights.before]);
 
   const shouldShowImpactScreen = evaluatePackaging(weights.before, weights.after, sortData).isOverpackaged;
@@ -1206,7 +1364,7 @@ export default function App() {
       case 10: return <SendingFeedbackScreen onComplete={nextStep} />;
       case 11: return <ConfirmationScreen onNext={nextStep} />;
       case 12: return <ImpactMessageScreen onNext={nextStep} />;
-      case 13: return <OutputScreen before={weights.before} after={weights.after} sortData={sortData} onPrint={handlePrintReport} onViewMap={() => setStep(14)} />;
+      case 13: return <OutputScreen before={weights.before} after={weights.after} sortData={sortData} onPrint={handlePrintReport} onPrinted={() => setStep(14)} onViewMap={() => setStep(14)} />;
       case 14: return <CityMapScreen onNext={nextStep} />;
       case 15: return <FinalScreen onRestart={restartFlow} />;
       default: return null;
@@ -1218,7 +1376,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative isolate flex flex-col w-screen min-h-[100dvh] overflow-hidden">
+    <div className="relative isolate flex flex-col w-screen min-h-[100dvh] overflow-hidden bg-gradient-to-br from-[#0ea5e9] via-[#10b981] to-[#84cc16]">
       <Background />
       
       {/* Header (only for some screens) */}
@@ -1227,15 +1385,13 @@ export default function App() {
           <button onClick={() => setStep(s => Math.max(0, s - 1))} className="p-3 hover:bg-white/10 rounded-full transition-colors">
             <ArrowLeft size={32} />
           </button>
-          <div className="text-center text-lg font-bold opacity-80 tracking-wide sm:text-xl">Unpack Package Guide</div>
+          <div aria-hidden="true" />
           <div className="w-14" aria-hidden="true" />
         </header>
       )}
 
       <main
-        className={`relative z-10 flex-1 min-h-0 pb-[env(safe-area-inset-bottom)] ${
-          hasHeader ? 'pt-0' : 'pt-[env(safe-area-inset-top)]'
-        }`}
+        className="relative z-10 flex-1 min-h-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       >
         <AnimatePresence mode="wait">
           <motion.div

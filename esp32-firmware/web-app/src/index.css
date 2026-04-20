@@ -12,12 +12,12 @@
   }
 
   html {
-    background: #0b1020;
+    background: linear-gradient(135deg, #0ea5e9 0%, #10b981 55%, #84cc16 100%);
   }
 
   body {
-    @apply bg-fixed bg-gradient-to-br from-[#0ea5e9] via-[#10b981] to-[#84cc16] min-h-screen text-white font-sans overflow-hidden;
-    background-color: #0b1020;
+    @apply min-h-screen text-white font-sans overflow-hidden;
+    background: linear-gradient(135deg, #0ea5e9 0%, #10b981 55%, #84cc16 100%);
   }
 }
 

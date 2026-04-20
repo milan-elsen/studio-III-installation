@@ -2,12 +2,15 @@
 #include <HX711.h>
 #include <math.h>
 #include <limits.h>
+#include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
 
 #include "generated/web_bundle.h"
 #include "generated/receipt_image.h"
 #include "generated/title_logo.h"
+#include "generated/chinese_slogan.h"
+#include "generated/english_slogan.h"
 
 namespace {
 constexpr char kApSsid[] = "StudioIII-Test";
@@ -20,15 +23,20 @@ const IPAddress kApSubnet(255, 255, 255, 0);
 constexpr unsigned long kPrinterBaudRate = 9600;
 constexpr int kPrinterTxPin = 17;
 constexpr int kPrinterRxPin = 16;
+constexpr unsigned long kPrintReportCooldownMs = 15000;
+constexpr char kLoadCellPrefsNamespace[] = "loadcell";
+constexpr char kLoadCellPrefsCalibrationKey[] = "calibration_factor";
 
 WebServer server(80);
 HardwareSerial printerSerial(2);
 HX711 scale;
+Preferences loadCellPrefs;
 unsigned long bootMillis = 0;
 float calibrationFactor = 1.0f;
 bool tareApplied = false;
 bool calibrated = false;
 unsigned long nextDebugLogAtMs = 0;
+unsigned long lastPrintReportAtMs = 0;
 long lastRaw = LONG_MIN;
 float lastWeight = NAN;
 long tareOffset = 0;
@@ -36,6 +44,34 @@ long tareOffset = 0;
 bool loadCellReady() { return scale.is_ready(); }
 
 bool hasLoadCellSample() { return lastRaw != LONG_MIN || !isnan(lastWeight); }
+
+void persistCalibrationFactor(float factor) {
+  if (!loadCellPrefs.begin(kLoadCellPrefsNamespace, false)) {
+    Serial.println("[prefs] failed to open calibration storage for write");
+    return;
+  }
+
+  loadCellPrefs.putFloat(kLoadCellPrefsCalibrationKey, factor);
+  loadCellPrefs.end();
+}
+
+void loadCalibrationFactorFromStorage() {
+  if (!loadCellPrefs.begin(kLoadCellPrefsNamespace, true)) {
+    Serial.println("[prefs] failed to open calibration storage for read");
+    return;
+  }
+
+  const float storedFactor = loadCellPrefs.getFloat(kLoadCellPrefsCalibrationKey, calibrationFactor);
+  loadCellPrefs.end();
+
+  if (storedFactor > 0.0f && isfinite(storedFactor)) {
+    calibrationFactor = storedFactor;
+    calibrated = true;
+    Serial.printf("[prefs] loaded calibration factor %.6f\n", calibrationFactor);
+  } else {
+    Serial.println("[prefs] no valid stored calibration factor found");
+  }
+}
 
 bool waitForLoadCell(unsigned long timeoutMs = 250) {
   return scale.wait_ready_timeout(timeoutMs, 1);
@@ -159,15 +195,27 @@ void printTitleLogo() {
   printerSetCenterAligned(false);
 }
 
+void printChineseSlogan() {
+  printerSetCenterAligned(true);
+  printerWriteRasterImage(ReceiptAssets::kChineseSloganPbm, ReceiptAssets::kChineseSloganPbm_len);
+  printerSetCenterAligned(false);
+}
+
+void printEnglishSlogan() {
+  printerSetCenterAligned(true);
+  printerWriteRasterImage(ReceiptAssets::kEnglishSloganPbm, ReceiptAssets::kEnglishSloganPbm_len);
+  printerSetCenterAligned(false);
+}
+
 String materialSummarySentence(int recyclableCount, int nonRecyclableCount, int reusableCount, int othersCount) {
   const bool recyclableOnly = recyclableCount > 0 && nonRecyclableCount == 0 && reusableCount == 0 && othersCount == 0;
   const bool nonRecyclableOnly = nonRecyclableCount > 0 && recyclableCount == 0 && reusableCount == 0 && othersCount == 0;
   const bool reusableOnly = reusableCount > 0 && recyclableCount == 0 && nonRecyclableCount == 0 && othersCount == 0;
   if (recyclableOnly) {
-    return "All materials fully recyclable\n:)";
+    return "All materials fully\nrecyclable\n:)";
   }
   if (nonRecyclableOnly) {
-    return "None of the materials are recyclable\n:(";
+    return "None of the materials are\nrecyclable\n:(";
   }
   if (reusableOnly) {
     return "All materials are reusable\n:)";
@@ -366,6 +414,7 @@ void handleSetCalibration() {
 
   calibrationFactor = factor;
   calibrated = true;
+  persistCalibrationFactor(calibrationFactor);
   if (loadCellReady()) {
     captureLoadCellSnapshot();
   }
@@ -403,6 +452,7 @@ void handleCalibrate() {
   calibrationFactor = newFactor;
   tareApplied = true;
   calibrated = true;
+  persistCalibrationFactor(calibrationFactor);
   captureLoadCellSnapshot();
   Serial.printf(
       "[api/loadcell/calibrate] known=%.2f raw=%ld net_raw=%ld factor=%.6f tare_offset=%ld\n",
@@ -451,7 +501,12 @@ void printWasteReport(
   printerSetTextSize(0x00);
   printerPrintLine("Waste");
   printerPrintLine("Total weight: " + String(lroundf(totalWeightGrams)) + " g");
+  printerSetBold(false);
   printerSetCenterAligned(false);
+  printerFeedLines(1);
+  printChineseSlogan();
+  printerFeedLines(1);
+  printEnglishSlogan();
   printerFeedLines(1);
   printReceiptImage();
   printerFeedLines(1);
@@ -473,7 +528,14 @@ void handlePrintReport() {
     return;
   }
 
-  const float wasteGrams = argOrDefaultFloat("waste_grams", max(0.0f, packagingGrams - contentGrams));
+  const unsigned long nowMs = millis();
+  if (lastPrintReportAtMs != 0 && nowMs - lastPrintReportAtMs < kPrintReportCooldownMs) {
+    server.send(429, "application/json", errorJson("print_cooldown_active"));
+    return;
+  }
+  lastPrintReportAtMs = nowMs;
+
+  const float wasteGrams = max(0.0f, argOrDefaultFloat("waste_grams", max(0.0f, packagingGrams - contentGrams)));
   const int recyclableCount = static_cast<int>(argOrDefaultLong("recyclable", 0));
   const int nonRecyclableCount = static_cast<int>(argOrDefaultLong("non_recyclable", 0));
   const int reusableCount = static_cast<int>(argOrDefaultLong("reusable", 0));
@@ -558,6 +620,7 @@ void setup() {
 
   printerSerial.begin(kPrinterBaudRate, SERIAL_8N1, kPrinterRxPin, kPrinterTxPin);
 
+  loadCalibrationFactorFromStorage();
   scale.begin(kHx711DataPin, kHx711ClockPin);
   scale.set_scale(calibrationFactor);
 
